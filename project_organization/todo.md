@@ -16,3 +16,8 @@
 	* Set up server communication
 	* Set up key exchange
 	* Set up circuit forwarding tables
+
+---
+
+## Source:
+[TOR documentation](https://svn-archive.torproject.org/svn/projects/design-paper/tor-design.pdf)
