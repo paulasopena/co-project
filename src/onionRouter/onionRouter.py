@@ -2,6 +2,8 @@
 import os
 import random
 import socket 
+import signal
+import sys
 
 # Encryption values
 g = 29
@@ -10,24 +12,76 @@ a = random.randint(1,15)
 
 # Networking values
 port_no = 5005
+sock = None
+cell_size = 512
 
-def processRequest():
+def signal_handler(sig, frame):
+    os.system('cls' if os.name == 'nt' else 'clear')
+    print("===============================")
+    print("Shutting down the Onion Router.")
+    print("===============================")
+    sys.exit(0)
+
+def processDestroyControlCell(packet):
+    # TODO - implement me
+    pass 
+
+def processCreatedControlCell(packet):
+    # TODO - implement me
+    pass 
+
+def processCreateControlCell(packet):
+    print("-> Control Cell received - Create command")
     pass
 
+def processRequest(connection):
+    # Receive the cell
+    packet = str(connection.recv(cell_size).decode())
+    print(packet)
+
+    # In case the TCP connnection was closed or something went wrong with the packet
+    if packet == "": #or len(packet)!=512:
+        return False
+
+    # Check the command byte (control cells have unencrypted headers)
+    if packet[3]=="0":
+        pass # Padding - not implemented
+    elif packet[3]=="1":
+        processCreateControlCell(packet) # Create request
+    elif packet[3]=="2":
+        processCreatedControlCell(packet) # Created request
+    elif packet[3]=="3":
+        processDestroyControlCell(packet) # Destroy request
+
+    # Otherwise, we are dealing with a relay cell
+
+    return True 
+    
+
 if __name__ == "__main__":
+    # Start SIGINT handler
+    signal.signal(signal.SIGINT, signal_handler)
     # Clear out the terminal
     os.system('cls' if os.name == 'nt' else 'clear')
     print("=== ONION ROUTER INITIATING ===")
 
     # Create the socket
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.bind(('0.0.0.0',5005))
+    sock.bind(('0.0.0.0',port_no))
     while True:
         # Start listening
         print("* Router listening...")
         sock.listen()
-        client, addr = sock.accept()
+
+        # Receive connection
+        connection, _ = sock.accept()
         print("-> Connection received!")
-        processRequest()
+
+        # TODO - possibly fork the process to add parallelism
+        # Start TCP connection
+        while True:
+            if not processRequest(connection):
+                break
+        connection.close()
         print("=========\n\n")
 
