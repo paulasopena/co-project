@@ -7,8 +7,6 @@ class Circuit:
 
     # Add an outgoing connection to a circID
     def addOutgoingConnection(self, addr, incomingCircID, outgoingCircID):
-        if incomingCircID not in entries:
-            return False
         entries[incomingCircID]={"addr":addr,"outgoingCircID":outgoingCircID}
         return True
 
