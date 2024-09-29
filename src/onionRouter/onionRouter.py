@@ -32,24 +32,34 @@ def processCreatedControlCell(packet):
     # TODO - implement me
     pass 
 
-def processCreateControlCell(packet, addr):
+def createKey(packet):
+    # TODO - this function shall create the key
+    return "TODO"
+
+def processCreateControlCell(packet, addr, connection):
     print("-> Control Cell received - Create command")
+
     # TODO - create the key
-    data = None
+    data = createKey(packet)
+
+    print("\tKey created...")
     
     # After creating the key, we need to register this circuit
-    flag = False
+    circID = packet[:2]
     if addr in circuits:
-        flag = circuits[addr].addNewEntry(packet[:2])
+        circuits[addr].addNewEntry(circID)
     else:
-        circuits[addr] = circuit.Circuit(packet[:2])
-    print(circuits)
-    print(circuits[addr].entries)
+        circuits[addr] = circuit.Circuit(circID)
+    print("\tCircuit handled...")
+
+    response = circID + "2" + data
+    connection.send(response.encode())
+    print("\tResponse sent.","\n-> Request fulfilled")
+    print("===============================")
 
 def processRequest(connection, addr):
     # Receive the cell
     packet = str(connection.recv(cell_size).decode())
-    print(packet)
 
     # In case the TCP connnection was closed or something went wrong with the packet
     if packet == "": #or len(packet)!=512:
@@ -59,7 +69,7 @@ def processRequest(connection, addr):
     if packet[2]=="0":
         pass # Padding - not implemented
     elif packet[2]=="1":
-        processCreateControlCell(packet, addr) # Create request
+        processCreateControlCell(packet, addr, connection) # Create request
     elif packet[2]=="2":
         processCreatedControlCell(packet) # Created request
     elif packet[2]=="3":

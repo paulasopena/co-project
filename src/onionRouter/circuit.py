@@ -3,8 +3,6 @@ class Circuit:
     # {"circID": {"addr": outgoingAddr, "outgoingCircID": outgoingCircID}}
     entries = {}
     def __init__(self, circID):
-        #if int(circID)>=2**16:
-        # return None 
         self.entries = {circID: {}} # Initialize the 1st circID without an outgoing connection
 
     # Add an outgoing connection to a circID
@@ -27,6 +25,6 @@ class Circuit:
     def addNewEntry(self,circID):
         if int(circID)>=2**16 or circID in self.entries:
             return False
-        self.entries[circID] = {} # Initialize the 1st circID without an outgoing connection
+        self.entries[circID] = {} 
         return True
 
