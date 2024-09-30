@@ -55,12 +55,32 @@ def buildControlCell(circID,cmd,data):
     response = circID.encode() + cmd.encode() + data.encode() 
 
 def processDestroyControlCell(packet):
-    # TODO - implement me
-    pass 
+    print("-> Control Cell received - Destroy command")
+    
+    # Extract the circuit ID from the packet (assuming it's in the first 2 bytes)
+    circID = int.from_bytes(packet[:2], byteorder='big', signed=False)
+
+    # Check if the circuit exists and destroy it
+    for addr, circuit in circuits.items():
+        if circID in circuit.entries:
+            del circuit.entries[circID]
+            print(f"-> Circuit {circID} destroyed for address {addr}")
+            break
+
+    print("-> Circuit destruction processed.\n===============================")
 
 def processCreatedControlCell(packet):
-    # TODO - implement me
-    pass 
+    print("-> Control Cell received - Created command")
+
+    # Extract the circuit ID from the packet (assuming it's in the first 2 bytes)
+    circID = int.from_bytes(packet[:2], byteorder='big', signed=False)
+
+    if circID in circuits:
+        print(f"-> Circuit {circID} creation confirmed.")
+    else:
+        print(f"Error: Circuit {circID} does not exist.")
+    
+    print("-> Circuit creation processed.\n===============================")
 
 def processCreateControlCell(packet, addr, connection):
     print("-> Control Cell received - Create command")
