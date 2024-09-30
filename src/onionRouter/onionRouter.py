@@ -160,13 +160,13 @@ def processRequest(connection, addr):
     if not packet: #or len(packet)!=512:
         return False
 
-    cmd = int.from_bytes(packet[2:3],byteorder="big",signed=False)
-    print("CMD: ",cmd)
+    cmd = int(packet[2:3].decode())
     # Check the command byte (control cells have unencrypted headers)
     if cmd==0:
         pass # Padding - not implemented
         return
     elif cmd==1:
+        print("hey babys")
         processCreateControlCell(packet, addr, connection) # Create request
         return
     elif cmd==2:
@@ -179,7 +179,7 @@ def processRequest(connection, addr):
     # Otherwise, we are dealing with a relay cell
 
     # TODO decrypt the message using the key
-    packet = decryptPacket(addr, packet,connectoin)
+    packet = decryptPacket(addr, packet,connection)
 
     print(packet[5:11].decode())
     if packet[5:11].decode()!="ethhak":
