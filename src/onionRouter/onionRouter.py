@@ -52,7 +52,7 @@ circuits = {} # dictionary to keep the circuits: {ip: circuits}
 # --------- Control cells ---------
 # Arguments must be int, int & str
 def buildControlCell(circID,cmd,data):
-    response = int.to_bytes(circID, length=2, byteorder='big', signed=False) + int.to_bytes(cmd, length=1, byteorder='big', signed=False) + data.encode() 
+    response = circID.encode() + cmd.encode() + data.encode() 
 
 def processDestroyControlCell(packet):
     # TODO - implement me
@@ -82,7 +82,7 @@ def processCreateControlCell(packet, addr, connection):
     print(circuits[addr].entries)
 
     # TODO - pad data
-    response = bytearray(packet[:2]) + int.to_bytes(2, length=1, byteorder='big', signed=False) + data.encode() 
+    response = bytearray(packet[:2]) + b"2" + data.encode() 
 
     connection.send(response)
     print("\tResponse sent.","\n-> Request fulfilled")
@@ -127,8 +127,8 @@ def processExtendRelayCell(packet,addr,connection):
 
 
 def processRelayCell(addr, packet, connection):
-    cmd = int.from_bytes(packet[13:14],byteorder="big",signed=False)
-    if cmd==11:
+    cmd = int(packet[13].decode())
+    if cmd==9:
         processExtendRelayCell(packet,addr,connection)
 
 # --------- General Networking ----
@@ -166,7 +166,6 @@ def processRequest(connection, addr):
         pass # Padding - not implemented
         return
     elif cmd==1:
-        print("hey babys")
         processCreateControlCell(packet, addr, connection) # Create request
         return
     elif cmd==2:
@@ -177,7 +176,6 @@ def processRequest(connection, addr):
         return
 
     # Otherwise, we are dealing with a relay cell
-
     # TODO decrypt the message using the key
     packet = decryptPacket(addr, packet,connection)
 
