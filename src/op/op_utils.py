@@ -1,24 +1,34 @@
 import random
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.primitives import serialization, hashes
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.backends import default_backend
+import os
 
-#TODO: What should be the value of public_exponent and keysize
-#TODO: How do we obtain public key of BOB
-#TODO: How should the outcome look like? Should it be a string of bytes? Buffer? 0 and 1?
-#TODO: Did not include tab (1 byte)
+#TODO: Implement receiving side and decrypt the payload -> understand what we should do (swtich cases)
+#TODO: Get key from receiving packet
+#QUESTION: How does Alice know the address of Carol with relay extended cells?
+
+privateKeyDH = 0
+publicKeyDH = 0
+
+privateKeyRSA = 0
+publicKeyRSA = 0
+
+circID = b"22"
 
 def create_circuit():
-    circID = generate_circID()
-    data = start_dfh_handshake()
-    return build_packet(circID, b"1", data)
+    data_exchange = start_dfh_handshake()
+    data_padding = insert_padding(data_exchange, 509)
+    return build_packet(circID, b"1", data_padding)
 
 def generate_rsa_keys():
-    private_key = rsa.generate_private_key(
+    privateKeyRSA = rsa.generate_private_key(
         public_exponent=65537, 
         key_size=2048,          
     )
-    public_key = private_key.public_key()
-    return private_key, public_key
+    publicKeyRSA = privateKeyRSA.public_key()
+    return privateKeyRSA, publicKeyRSA
 
 def encrypt_with_rsa(public_key, payload_bytes):
     ciphertext = public_key.encrypt(
@@ -34,18 +44,22 @@ def encrypt_with_rsa(public_key, payload_bytes):
 def start_dfh_handshake():
     g = 29
     p = 4751
-    private_key = random.randint(1, p-1)
-    payload_k = pow(g, private_key, p)
+    privateKeyDH = random.randint(1, p-1)
+    payload_k = pow(g, privateKeyDH, p)
     payload_bytes = payload_k.to_bytes((payload_k.bit_length() + 7) // 8, byteorder='big')
     print(payload_bytes)
-    private_key_rsa, public_key_rsa = generate_rsa_keys()
-    encrypted_payload = encrypt_with_rsa(public_key_rsa, payload_bytes)
-    if len(encrypted_payload) < 509:
-        padding = b'0' * (509 - len(encrypted_payload))
-        payload = padding + encrypted_payload
+    privateKeyRSA, publicKeyRSA = generate_rsa_keys()
+    encrypted_payload = encrypt_with_rsa(publicKeyRSA, payload_bytes)
+    return encrypted_payload
+
+def insert_padding(data_exchange, length):
+    if len(data_exchange) < length:
+        padding = b'0' * (length - len(data_exchange))
+        payload = padding + data_exchange
     else:
-        payload = encrypted_payload
+        payload = data_exchange
     return payload
+    
 
 def final_dfh_handshake():
     '''g = 29 
@@ -65,9 +79,102 @@ def build_packet(circID, cmd, data):
     packet = circID + cmd + data
     return packet
 
-def generate_circID():
-    circID = b"22" #2304
-    return circID
+def receive_packet(packet):
+    decrypt_with_rsa(privateKeyRSA, packet)
+    process_command(packet)
 
-#def receive_packet():
-#def create_connection(): #probably other team
+def process_command(packet):
+    cmd = packet[2:3].decode()
+    payload = packet[3:]
+    if cmd == "0":
+        pass
+        return
+    elif cmd == "2":
+        processControllCreated(payload)
+    elif cmd == "3":
+        processControllDestroy(payload)
+    elif cmd == "4":
+        processRelayData(payload)
+    elif cmd == "5":
+        processRelayBegin(payload)
+    elif cmd == "6":
+        processRelayEnd(payload)
+    elif cmd == "B":
+        processRelayConnected(payload)
+    elif cmd == "D":
+        processRelayExtended(payload)
+
+
+### Controll Cells
+    
+def processControllDestroy(payload):
+    print("destroy")
+
+def processControllCreated(payload):
+    print("created")
+    thingRelatedToBob = payload[220:476]
+    publicKeyDH = payload[476:]
+    build_relayCell(circID, b"4", b"C")
+
+
+### Relay Cells 
+
+def build_relayCell(circID, relay, cmd):
+    streamID = b"11"
+    checkSum = b"ethhak"
+    relayLength = b"498"
+    OR2 = b"0.0.0.0"
+    data = start_dfh_handshake() + OR2
+    data_padding = insert_padding(data, 498)
+    encrypted = encrypt_with_AES(cmd + data_padding)
+
+    packet = circID + relay + streamID + checkSum + relayLength + encrypted
+    return packet
+
+def processRelayConnected(payload):
+    print("RelayConnected")
+
+def processRelayExtended(payload):
+    print("RelayExtended")
+
+def processRelayEnd(payload):
+    print("RelayEnd")
+
+def processRelayBegin(payload):
+    print("RelayBegin")
+    
+def processRelayData(payload):
+    print("RelayData")
+
+### RSA
+
+def decrypt_with_rsa(encrypted_payload):
+    decrypted_data = privateKeyRSA.decrypt(
+        encrypted_payload,
+        padding.OAEP(
+            mgf=padding.MGF1(algorithm=hashes.SHA256()),
+            algorithm=hashes.SHA256(),
+            label=None
+        )
+    )
+    return decrypted_data
+
+### AES
+
+def encrypt_with_AES(payload):
+    if key is None:
+        key = os.urandom(32)
+    iv = os.urandom(16) 
+
+    cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=default_backend())
+    encryptor = cipher.encryptor()
+
+    padded_payload = pad_payload_AES(payload)
+    ciphertext = encryptor.update(padded_payload) + encryptor.finalize()
+    return iv + ciphertext
+
+def pad_payload_AES(payload):
+    block_size = 16
+    padding_length = block_size - (len(payload) % block_size)
+    padding = bytes([padding_length] * padding_length)  # PKCS7 padding
+    return payload + padding
