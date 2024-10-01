@@ -27,7 +27,7 @@ a = random.randint(1,15)
 lenKey = 10
 keys = {} # dictionary to keep the keys: {ip: key}
 
-def process_dfh_handshake_step_2(received_public_key_a_bytes):
+def dh_handshake_step_2(received_public_key_a_bytes):
     
     public_key_a = int.from_bytes(received_public_key_a_bytes, byteorder='big', signed=False)
     private_key_b = random.randint(1, p - 1)
