@@ -36,6 +36,7 @@ def dh_handshake_step_2(received_public_key_a_bytes):
 
     # Convert Node B's public key to bytes to send back to Node A
     public_key_b_bytes = public_key_b.to_bytes((public_key_b.bit_length() + 7) // 8, byteorder='big')
+    print(public_key_b_bytes)
     return public_key_b_bytes, shared_secret_b
 
 # TODO
@@ -97,6 +98,12 @@ def processCreateControlCell(packet, addr, connection):
     print("-> Control Cell received - Create command")
 
     # TODO - create the key
+    # TODO - remove padding
+    # TODO - decrypt_rsa
+    print("HEY THIS IS PACKET RECEIVED: ", packet)
+    packet_no_padding = packet[-256:]
+    print("HEY THIS IS PACKET NO PADDING: ", packet_no_padding)
+
     data = createKey(packet)
 
     print("\tKey created...")
@@ -218,7 +225,18 @@ def processRequest(connection, addr):
         processRelayCell(addr,packet,connection)
     
     return 
-    
+
+ def decrypt_with_rsa(encrypted_payload):
+    decrypted_data = privateKeyRSA.decrypt(
+        encrypted_payload,
+        padding.OAEP(
+            mgf=padding.MGF1(algorithm=hashes.SHA256()),
+            algorithm=hashes.SHA256(),
+            label=None
+        )
+    )
+    return decrypted_data 
+      
 def awaitRequest():
     while True:
         # Start listening
