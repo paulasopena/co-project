@@ -27,10 +27,21 @@ a = random.randint(1,15)
 lenKey = 10
 keys = {} # dictionary to keep the keys: {ip: key}
 
+def process_dfh_handshake_step_2(received_public_key_a_bytes):
+    
+    public_key_a = int.from_bytes(received_public_key_a_bytes, byteorder='big', signed=False)
+    private_key_b = random.randint(1, p - 1)
+    public_key_b = pow(g, private_key_b, p)
+    shared_secret_b = pow(public_key_a, private_key_b, p)
+
+    # Convert Node B's public key to bytes to send back to Node A
+    public_key_b_bytes = public_key_b.to_bytes((public_key_b.bit_length() + 7) // 8, byteorder='big')
+    return public_key_b_bytes, shared_secret_b
+
 # TODO
 def createKey(packet):
-    # TODO - this function shall create the key
-    return "TODO"
+    #TODO - implement me
+    pass
 
 #TODO
 def decryptPacket(addr, packet):
