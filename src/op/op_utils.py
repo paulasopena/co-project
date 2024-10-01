@@ -23,12 +23,21 @@ def create_circuit():
     return build_packet(circID, b"1", data_padding)
 
 def generate_rsa_keys():
-    privateKeyRSA = rsa.generate_private_key(
+    '''privateKeyRSA = rsa.generate_private_key(
         public_exponent=65537, 
         key_size=2048,          
     )
     publicKeyRSA = privateKeyRSA.public_key()
-    return privateKeyRSA, publicKeyRSA
+    return privateKeyRSA, publicKeyRSA'''
+    publicKeyRSA = None
+    with open("src\op\public_key.pem", "rb") as key_file:
+        publicKeyRSA = serialization.load_pem_public_key(
+            key_file.read(),
+            backend=default_backend()
+    )
+    return None, publicKeyRSA
+
+
 
 def encrypt_with_rsa(public_key, payload_bytes):
     ciphertext = public_key.encrypt(
@@ -46,7 +55,8 @@ def start_dfh_handshake():
     p = 4751
     privateKeyDH = random.randint(1, p-1)
     payload_k = pow(g, privateKeyDH, p)
-    payload_bytes = payload_k.to_bytes((payload_k.bit_length() + 7) // 8, byteorder='big')
+    #payload_bytes = payload_k.to_bytes((payload_k.bit_length() + 7) // 8, byteorder='big')
+    payload_bytes = str(payload_k).encode()
     print(payload_bytes)
     privateKeyRSA, publicKeyRSA = generate_rsa_keys()
     encrypted_payload = encrypt_with_rsa(publicKeyRSA, payload_bytes)
@@ -80,7 +90,7 @@ def build_packet(circID, cmd, data):
     return packet
 
 def receive_packet(packet):
-    decrypt_with_rsa(privateKeyRSA, packet)
+    #decrypt_with_rsa(packet)
     process_command(packet)
 
 def process_command(packet):
