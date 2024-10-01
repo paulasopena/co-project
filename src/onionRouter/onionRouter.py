@@ -5,6 +5,8 @@ import socket
 import signal
 import sys
 import circuit
+from cryptography.hazmat.primitives import serialization, hashes
+from cryptography.hazmat.primitives.asymmetric import rsa, padding 
 
 
 # ================================================
@@ -26,6 +28,7 @@ p = 4751
 a = random.randint(1,15)
 lenKey = 10
 keys = {} # dictionary to keep the keys: {ip: key}
+privateKey = None
 
 def dh_handshake_step_2(received_public_key_a_bytes):
     
@@ -41,8 +44,21 @@ def dh_handshake_step_2(received_public_key_a_bytes):
 
 # TODO
 def createKey(packet):
-    #TODO - implement me
-    pass
+    # Remove padding
+    packet = packet[-256:]
+
+    # Decrypt it
+    data =  privateKey.decrypt(
+        packet,
+        padding.OAEP(
+            mgf=padding.MGF1(algorithm=hashes.SHA256()),
+            algorithm=hashes.SHA256(),
+            label=None
+        )
+    ) 
+    print("HERES THE DATA")
+    print(data)
+    print(data.decode())
 
 #TODO
 def decryptPacket(addr, packet):
@@ -100,9 +116,6 @@ def processCreateControlCell(packet, addr, connection):
     # TODO - create the key
     # TODO - remove padding
     # TODO - decrypt_rsa
-    print("HEY THIS IS PACKET RECEIVED: ", packet)
-    packet_no_padding = packet[-256:]
-    print("HEY THIS IS PACKET NO PADDING: ", packet_no_padding)
 
     data = createKey(packet)
 
@@ -226,7 +239,7 @@ def processRequest(connection, addr):
     
     return 
 
- def decrypt_with_rsa(encrypted_payload):
+def decrypt_with_rsa(encrypted_payload):
     decrypted_data = privateKeyRSA.decrypt(
         encrypted_payload,
         padding.OAEP(
@@ -255,12 +268,20 @@ def awaitRequest():
         connection.close()
 
 if __name__ == "__main__":
+    # Start private key
+    with open("private_key.pem", "rb") as key_file:
+        privateKey = serialization.load_pem_private_key(
+            key_file.read(),
+            password=None,
+        )
+
     # Start SIGINT handler
     signal.signal(signal.SIGINT, signal_handler)
+
     # Clear out the terminal
     os.system('cls' if os.name == 'nt' else 'clear')
     print("=== ONION ROUTER INITIATING ===")
-
+    print(privateKey)
     # Create the socket
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.bind(('0.0.0.0',port_no))
