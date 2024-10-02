@@ -9,13 +9,15 @@ import os
 #TODO: Get key from receiving packet
 #QUESTION: How does Alice know the address of Carol with relay extended cells?
 
-privateKeyDH = 0
+privateKeyDH = []
 publicKeyDH = 0
 
 privateKeyRSA = 0
 publicKeyRSA = 0
 
 circID = b"22"
+g = 29
+p = 4751
 
 def create_circuit():
     data_exchange = start_dfh_handshake()
@@ -51,10 +53,8 @@ def encrypt_with_rsa(public_key, payload_bytes):
     return ciphertext
 
 def start_dfh_handshake():
-    g = 29
-    p = 4751
-    privateKeyDH = random.randint(1, p-1)
-    payload_k = pow(g, privateKeyDH, p)
+    privateKeyDH.append(random.randint(1, 50))
+    payload_k = pow(g, privateKeyDH[len(privateKeyDH)-1], p)
     #payload_bytes = payload_k.to_bytes((payload_k.bit_length() + 7) // 8, byteorder='big')
     payload_bytes = str(payload_k).encode()
     print(payload_bytes)
@@ -121,9 +121,16 @@ def processControllDestroy(payload):
     print("destroy")
 
 def processControllCreated(payload):
-    print("created")
-    thingRelatedToBob = payload[220:476]
-    publicKeyDH = payload[476:]
+    print("PAYLOAD: ", payload)
+    string_key = payload.decode('utf-8')
+    values = string_key.split(',')
+    prePublicKey = values[1]
+    print("PublicKey: ", prePublicKey)
+    publicKeyDHInt = pow(int(prePublicKey), privateKeyDH[len(privateKeyDH)-1], p)
+    length = (publicKeyDHInt.bit_length() + 7)//8
+    publicKeyDH = publicKeyDHInt.to_bytes(length, byteorder="big")
+    print("PublicKeyDH: ", publicKeyDH)
+    publicKeyDHHashed = payload[476:]
     build_relayCell(circID, b"4", b"C")
 
 
@@ -172,11 +179,9 @@ def decrypt_with_rsa(encrypted_payload):
 ### AES
 
 def encrypt_with_AES(payload):
-    if key is None:
-        key = os.urandom(32)
-    iv = os.urandom(16) 
+    iv = os.urandom(16)
 
-    cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=default_backend())
+    cipher = Cipher(algorithms.AES(publicKeyDH), modes.CBC(iv), backend=default_backend())
     encryptor = cipher.encryptor()
 
     padded_payload = pad_payload_AES(payload)
