@@ -103,7 +103,7 @@ def decryptPacketExtend(addr, packet,conn):
     ).decode()
     """
 
-    return data[1:len(data)-15], data[-15:].decode()
+    return data[1:len(data)-15], data[-15:].decode(), iv
 
 def encryptPacket(packet,addr):
     pass
@@ -180,7 +180,7 @@ def processCreateControlCell(packet, addr, connection):
 
 # --------- Relay  cells ---------
 def createRelayCell(circID,streamID,checksum,length,cmd,data):
-    response = int.to_bytes(circID, length=2, byteorder='big', signed=False) 
+    response = circID
     response += int.to_bytes(1, length=1, byteorder='big', signed=False) 
     response += int.to_bytes(streamID, length=2, byteorder='big', signed=False) 
     response += checksum.encode()
@@ -189,7 +189,7 @@ def createRelayCell(circID,streamID,checksum,length,cmd,data):
     response += data.encode()
     return response
 
-def processExtendRelayCell(packet,addr,connection,data,orAddr):
+def processExtendRelayCell(packet,addr,connection,data,orAddr,iv):
     # This will build a create command cell and send it to the next OR
 
     # Get the info
@@ -204,17 +204,39 @@ def processExtendRelayCell(packet,addr,connection,data,orAddr):
     print(newPacket)
 
     # Send the packet
-    controlResponse = sendCell(packet, orAddr)
+    controlResponse = sendCell(newPacket, orAddr)
     data = controlResponse[3:].decode()
-    print("Received the response")
-    print(data)
 
+    length = (keys[addr].bit_length()+7)//8
+    key = keys[addr].to_bytes(length, byteorder="big") + b'\x00'*(16-length)
+    padder = sym_padding.PKCS7(128).padder()
+    paddedData = padder.update(data.replace("a","").encode()) + padder.finalize()
+
+    cipher = Cipher(algorithms.AES(key),modes.CBC(iv))
+    encryptor = cipher.encryptor()
+    ct = encryptor.update(paddedData)+ encryptor.finalize()
+
+    response = str(circIDOP).encode()
+    length = len(ct)
+    encoded = b"4"+b"00"+b"ethhak"+length.to_bytes(2,'big')+b"a"+ct
+
+    response += encoded
+    response += b"0"*(512-len(response))
+
+    # HOW TO DECRYPT IT ==================
+    sizeofData = int.from_bytes(response[11:13],'big')
+    print("SIZE OF DATA: ",sizeofData)
+
+    encryptedBytes = response[14:14+sizeofData]
+    decryptor = cipher.decryptor()
+    padded_data = decryptor.update(encryptedBytes) + decryptor.finalize()
+    unpadder = sym_padding.PKCS7(128).unpadder()
+    decryptedData = unpadder.update(padded_data) + unpadder.finalize()
+    print("DATA DECRYPTED: ",decryptedData)
+    # ====================================
+    
     # Encrypt & Forward the response
-    """
-    relayResponse = createRelayCell(circIDOP,0,"ethhak",lenKey,12,data)
-    relayResponse = encryptPacket(packet,addr)
-    connection.send(relayResponse)
-    """
+    connection.send(response)
 
     return
 
@@ -222,8 +244,8 @@ def processRelayCell(addr, packet, connection):
     #cmd = int(packet[13].decode())
     cmd = 9
     if cmd==9 or True:
-        data, orAddr = decryptPacketExtend(addr, packet,connection)
-        processExtendRelayCell(packet,addr,connection,data,orAddr)
+        data, orAddr, iv = decryptPacketExtend(addr, packet,connection)
+        processExtendRelayCell(packet,addr,connection,data,orAddr, iv)
 
 # --------- General Networking ----
 def connectCircuit(addr,circIDOP,orAddr):
@@ -238,12 +260,13 @@ def connectCircuit(addr,circIDOP,orAddr):
     return
 
 def sendCell(packet, addr):
-    host=addr
+    host = ".".join(str(int(octet)) for octet in addr.split("."))
     tempSock = socket.socket()
+    print(host)
     tempSock.connect((host,port_no))
     tempSock.send(packet)
     response = tempSock.recv(cell_size)
-    tepmSock.close()
+    tempSock.close()
     return response
 
 def processRequest(connection, addr):
