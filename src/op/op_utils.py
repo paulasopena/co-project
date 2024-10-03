@@ -115,7 +115,7 @@ def process_command(packet):
         processRelayExtended(payload)
 
 
-### Controll Cells
+### Controll Cells ###
     
 def processControllDestroy(payload):
     print("destroy")
@@ -125,27 +125,32 @@ def processControllCreated(payload):
     string_key = payload.decode('utf-8')
     values = string_key.split(',')
     prePublicKey = values[1]
-    print("PublicKey: ", prePublicKey)
     publicKeyDHInt = pow(int(prePublicKey), privateKeyDH[len(privateKeyDH)-1], p)
     length = (publicKeyDHInt.bit_length() + 7)//8
     publicKeyDH = publicKeyDHInt.to_bytes(length, byteorder="big")
-    print("PublicKeyDH: ", publicKeyDH)
     publicKeyDHHashed = payload[476:]
-    build_relayCell(circID, b"4", b"C")
+    build_relayCell(circID, b"4", b"C", publicKeyDH)
 
 
-### Relay Cells 
+### Relay Cells ###
 
-def build_relayCell(circID, relay, cmd):
+def build_relayCell(circID, relay, cmd, publicKey):
     streamID = b"11"
     checkSum = b"ethhak"
-    relayLength = b"498"
+    number = 498
+    relayLength = number.to_bytes(2, byteorder='big') 
     OR2 = b"0.0.0.0"
     data = start_dfh_handshake() + OR2
-    data_padding = insert_padding(data, 498)
-    encrypted = encrypt_with_AES(cmd + data_padding)
-
-    packet = circID + relay + streamID + checkSum + relayLength + encrypted
+    encrypted = encrypt_with_AES(cmd + data, publicKey)
+    data_padding_encrypted = insert_padding(encrypted, 499)
+    print("circID LENGTH: ", len(circID))
+    print("relay LENGTH: ", len(relay))
+    print("streamID LENGTH: ", len(streamID))
+    print("checkSUM LENGTH: ", len(checkSum))
+    print("relayLength LENGTH: ", len(relayLength))
+    print("WITH PADDING LENGTH: ", len(data_padding_encrypted))
+    packet = circID + relay + streamID + checkSum + relayLength + data_padding_encrypted
+    print("PACKET: ", packet)
     return packet
 
 def processRelayConnected(payload):
@@ -178,10 +183,17 @@ def decrypt_with_rsa(encrypted_payload):
 
 ### AES
 
-def encrypt_with_AES(payload):
-    iv = os.urandom(16)
+def checkKey(key, desired_length):
+    if len(key) < desired_length:
+        padded_key = key + b'\x00' * (desired_length - len(key))
+    else:
+        padded_key = key[:desired_length] 
+    return padded_key
 
-    cipher = Cipher(algorithms.AES(publicKeyDH), modes.CBC(iv), backend=default_backend())
+def encrypt_with_AES(payload, key):
+    key = checkKey(key,16)
+    iv = os.urandom(16)
+    cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=default_backend())
     encryptor = cipher.encryptor()
 
     padded_payload = pad_payload_AES(payload)

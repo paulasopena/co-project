@@ -2,7 +2,7 @@ import socket
 import struct
 import op_utils
 
-TCP_IP = '192.16.140.164' 
+TCP_IP = '130.237.5.36' 
 TCP_PORT = 5005          # Same port as the server
 BUFFER_SIZE = 1024
 PACKET = op_utils.create_circuit()
