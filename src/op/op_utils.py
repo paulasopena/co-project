@@ -156,7 +156,7 @@ def build_relayCell(circID, relay, cmd, publicKey):
     print("checkSUM LENGTH: ", len(checkSum))
     print("relayLength LENGTH: ", len(relayLength))
     print("WITH PADDING LENGTH: ", len(data_padding_encrypted))
-    number = len(data)
+    number = len(encrypted)
     relayLength = number.to_bytes(2, byteorder='big')
     packet = circID + relay + streamID + checkSum + relayLength + data_padding_encrypted
     print("PACKET: ", packet)
