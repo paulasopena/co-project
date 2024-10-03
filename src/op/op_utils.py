@@ -103,16 +103,8 @@ def process_command(packet):
         return processControllCreated(payload)
     elif cmd == "3":
         return processControllDestroy(payload)
-    elif cmd == "4":
-        return processRelayData(payload)
-    elif cmd == "5":
-        return processRelayBegin(payload)
-    elif cmd == "6":
-        return processRelayEnd(payload)
-    elif cmd == "B":
-        return processRelayConnected(payload)
-    elif cmd == "D":
-        return processRelayExtended(payload)
+    elif cmd >= "4":
+        return processRelayCells(payload)
 
 
 ### Controll Cells ###
@@ -135,11 +127,25 @@ def processControllCreated(payload):
 
 ### Relay Cells ###
 
+def processRelayCells(payload):
+    payload_decrypted = decrypt_with_rsa(payload)
+    cmd = payload_decrypted[10:11]
+    data = payload_decrypted[11:]
+    relayLength = payload_decrypted[8:10]
+    if cmd == "0":
+        pass
+        return
+    elif cmd == "4":
+        return processRelayData(data, relayLength)
+    elif cmd == "B":
+        return processRelayConnected(data, relayLength)
+    elif cmd == "D":
+        return processRelayExtended(data, relayLength)
+
+
 def build_relayCell(circID, relay, cmd, publicKey):
     streamID = b"11"
-    checkSum = b"ethhak"
-    number = 498
-    relayLength = number.to_bytes(2, byteorder='big') 
+    checkSum = b"ethhak" 
     OR2 = b"0.0.0.0"
     data = start_dfh_handshake() + OR2
     encrypted = encrypt_with_AES(cmd + data, publicKey)
@@ -150,6 +156,8 @@ def build_relayCell(circID, relay, cmd, publicKey):
     print("checkSUM LENGTH: ", len(checkSum))
     print("relayLength LENGTH: ", len(relayLength))
     print("WITH PADDING LENGTH: ", len(data_padding_encrypted))
+    number = len(data)
+    relayLength = number.to_bytes(2, byteorder='big')
     packet = circID + relay + streamID + checkSum + relayLength + data_padding_encrypted
     print("PACKET: ", packet)
     return packet
@@ -158,11 +166,17 @@ def processRelayConnected(payload):
     print("RelayConnected")
 
 ### WORKING ON IT NOW! ###
-def processRelayExtended(payload):
-    #decrypt with RSA
-    #seperate into different bytes
-    #check payload[13:14]
+def processRelayExtended(payload, relayLength):
+    finalPayload = removePadding(payload, relayLength)
+    string_key = finalPayload.decode('utf-8')
+    values = string_key.split(',')
+    prePublicKey = values[0]
+    hashedKey = values[1]
     print("RelayExtended")
+
+def removePadding(payload, relayLength):
+    finalPayload = payload[-relayLength-1:]
+    return finalPayload
 
 def processRelayEnd(payload):
     print("RelayEnd")
