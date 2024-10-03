@@ -91,7 +91,7 @@ def build_packet(circID, cmd, data):
 
 def receive_packet(packet):
     #decrypt_with_rsa(packet)
-    process_command(packet)
+    return process_command(packet)
 
 def process_command(packet):
     cmd = packet[2:3].decode()
@@ -100,19 +100,19 @@ def process_command(packet):
         pass
         return
     elif cmd == "2":
-        processControllCreated(payload)
+        return processControllCreated(payload)
     elif cmd == "3":
-        processControllDestroy(payload)
+        return processControllDestroy(payload)
     elif cmd == "4":
-        processRelayData(payload)
+        return processRelayData(payload)
     elif cmd == "5":
-        processRelayBegin(payload)
+        return processRelayBegin(payload)
     elif cmd == "6":
-        processRelayEnd(payload)
+        return processRelayEnd(payload)
     elif cmd == "B":
-        processRelayConnected(payload)
+        return processRelayConnected(payload)
     elif cmd == "D":
-        processRelayExtended(payload)
+        return processRelayExtended(payload)
 
 
 ### Controll Cells ###
@@ -129,7 +129,8 @@ def processControllCreated(payload):
     length = (publicKeyDHInt.bit_length() + 7)//8
     publicKeyDH = publicKeyDHInt.to_bytes(length, byteorder="big")
     publicKeyDHHashed = payload[476:]
-    build_relayCell(circID, b"4", b"C", publicKeyDH)
+    newPacket = build_relayCell(circID, b"4", b"C", publicKeyDH)
+    return newPacket
 
 
 ### Relay Cells ###
@@ -156,7 +157,11 @@ def build_relayCell(circID, relay, cmd, publicKey):
 def processRelayConnected(payload):
     print("RelayConnected")
 
+### WORKING ON IT NOW! ###
 def processRelayExtended(payload):
+    #decrypt with RSA
+    #seperate into different bytes
+    #check payload[13:14]
     print("RelayExtended")
 
 def processRelayEnd(payload):
