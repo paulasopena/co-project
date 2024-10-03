@@ -7,6 +7,9 @@ import sys
 import circuit
 from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.asymmetric import rsa, padding 
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives import padding as sym_padding
+import math
 
 
 # ================================================
@@ -28,42 +31,79 @@ p = 4751
 a = random.randint(1,15)
 lenKey = 10
 keys = {} # dictionary to keep the keys: {ip: key}
-privateKey = None
 
-def dh_handshake_step_2(received_public_key_a_bytes):
-    
-    public_key_a = int.from_bytes(received_public_key_a_bytes, byteorder='big', signed=False)
-    private_key_b = random.randint(1, p - 1)
-    public_key_b = pow(g, private_key_b, p)
-    shared_secret_b = pow(public_key_a, private_key_b, p)
+def dh_handshake(received_public_key, ip):
+    small_b = random.randint(1, 100)
+    capital_B = pow(g, small_b, p)
 
-    # Convert Node B's public key to bytes to send back to Node A
-    public_key_b_bytes = public_key_b.to_bytes((public_key_b.bit_length() + 7) // 8, byteorder='big')
-    print(public_key_b_bytes)
-    return public_key_b_bytes, shared_secret_b
+    #print("capital_A", received_public_key)
+    #print("capital_B: ",capital_B)
+    #print("SMALL_B ",small_b)
+    key = pow(received_public_key,small_b,p)#pow(g, power, p)
+    #print("KEY: ",key)
+
+    keys[ip] = key
+
+    return capital_B
 
 # TODO
-def createKey(packet):
+def createKey(packet, ip):
     # Remove padding
     packet = packet[-256:]
 
     # Decrypt it
-    data =  privateKey.decrypt(
+    data =  int(privateKey.decrypt(
         packet,
         padding.OAEP(
             mgf=padding.MGF1(algorithm=hashes.SHA256()),
             algorithm=hashes.SHA256(),
             label=None
         )
-    ) 
-    print("HERES THE DATA")
-    print(data)
-    print(data.decode())
+    ).decode())
+
+    
+    g_y = dh_handshake(data,ip)
+    toBeHashed = str(keys[ip])+"handshake"
+    hashed = hash(toBeHashed)
+    data = str(g_y)+","+str(hashed)
+    return data
+
+    
 
 #TODO
-def decryptPacket(addr, packet):
-    # this function shall decrypt the packet using the appropriate key
-    return packet 
+def decryptPacketExtend(addr, packet,conn):
+    # get the Size of the data
+    size =int.from_bytes(packet[11:13],"big")
+
+    # obtain the iv
+    iv = packet[-size:-size+16]
+
+    # get the encrypted bytes
+    encryptedBytes = packet[-size+16:]
+    
+    # conver the key to binary
+    length = (keys[addr].bit_length()+7)//8
+    key = keys[addr].to_bytes(length, byteorder="big") + b'\x00'*(16-length)
+    
+    # decypher & remove padding
+    cipher = Cipher(algorithms.AES(key), modes.CBC(iv))
+    decryptor = cipher.decryptor()
+    padded_data = decryptor.update(encryptedBytes) + decryptor.finalize()
+    unpadder = sym_padding.PKCS7(128).unpadder()
+    data = unpadder.update(padded_data) + unpadder.finalize()
+
+    """
+    data =  privateKey.decrypt(
+            data[1:len(data)-15],
+        padding.OAEP(
+            mgf=padding.MGF1(algorithm=hashes.SHA256()),
+            algorithm=hashes.SHA256(),
+            label=None
+        )
+    ).decode()
+    """
+
+    return data[1:len(data)-15], data[-15:].decode()
 
 def encryptPacket(packet,addr):
     pass
@@ -80,7 +120,9 @@ circuits = {} # dictionary to keep the circuits: {ip: circuits}
 # --------- Control cells ---------
 # Arguments must be int, int & str
 def buildControlCell(circID,cmd,data):
-    response = circID.encode() + cmd.encode() + data.encode() 
+    data = b"0"*(509-len(data))+data
+    response = circID.encode() + cmd.encode() + data
+    return response
 
 def processDestroyControlCell(packet):
     print("-> Control Cell received - Destroy command")
@@ -113,16 +155,12 @@ def processCreatedControlCell(packet):
 def processCreateControlCell(packet, addr, connection):
     print("-> Control Cell received - Create command")
 
-    # TODO - create the key
-    # TODO - remove padding
-    # TODO - decrypt_rsa
-
-    data = createKey(packet)
+    data = createKey(packet,addr)
 
     print("\tKey created...")
     
     # After creating the key, we need to register this circuit
-    circID = int.from_bytes(packet[:2])
+    circID = int(packet[:2])
     if addr in circuits:
         circuits[addr].addNewEntry(circID)
     else:
@@ -132,7 +170,7 @@ def processCreateControlCell(packet, addr, connection):
     print("\tCircuit handled...")
     print(circuits[addr].entries)
 
-    # TODO - pad data
+    data = "a"*(509-len(data))+data
     response = bytearray(packet[:2]) + b"2" + data.encode() 
 
     connection.send(response)
@@ -151,36 +189,41 @@ def createRelayCell(circID,streamID,checksum,length,cmd,data):
     response += data.encode()
     return response
 
-def processExtendRelayCell(packet,addr,connection):
+def processExtendRelayCell(packet,addr,connection,data,orAddr):
     # This will build a create command cell and send it to the next OR
 
     # Get the info
-    circIDOP = int.from_bytes(packet[:2],byteorder='big',signed=False)
-    orAddr = packet[14:29].decode()
-    encKey = packet[29:29+lenKey].decode()
+    print("I AM ABOUT TO SEND THE RELAY CELL")
+    circIDOP = int(packet[:2].decode())
 
     # Add the outgoing to the circuit
     connectCircuit(addr,circIDOP,orAddr)
     
     # Create the packet
-    newPacket = createRelayCell(2,1,encKey)
+    newPacket = buildControlCell('00','1',data)
+    print(newPacket)
 
     # Send the packet
     controlResponse = sendCell(packet, orAddr)
     data = controlResponse[3:].decode()
+    print("Received the response")
+    print(data)
 
     # Encrypt & Forward the response
+    """
     relayResponse = createRelayCell(circIDOP,0,"ethhak",lenKey,12,data)
     relayResponse = encryptPacket(packet,addr)
     connection.send(relayResponse)
+    """
 
     return
 
-
 def processRelayCell(addr, packet, connection):
-    cmd = int(packet[13].decode())
-    if cmd==9:
-        processExtendRelayCell(packet,addr,connection)
+    #cmd = int(packet[13].decode())
+    cmd = 9
+    if cmd==9 or True:
+        data, orAddr = decryptPacketExtend(addr, packet,connection)
+        processExtendRelayCell(packet,addr,connection,data,orAddr)
 
 # --------- General Networking ----
 def connectCircuit(addr,circIDOP,orAddr):
@@ -189,9 +232,9 @@ def connectCircuit(addr,circIDOP,orAddr):
         circuits[addr].addOutgoingConnection(orAddr,circIDOP,newCircID)
         circuits[orAddr].addOutgoingConnection(addr,newCircID)
     else:
-        circuits[orAddr] = circuit.Circuit(circID)
+        circuits[orAddr] = circuit.Circuit(0)
         circuits[addr].addOutgoingConnection(orAddr,circIDOP,0)
-        circuits[orAddr].addOutgoingConnection(addr,0)
+        circuits[orAddr].addOutgoingConnection(addr,0,circIDOP)
     return
 
 def sendCell(packet, addr):
@@ -218,17 +261,16 @@ def processRequest(connection, addr):
         return
     elif cmd==1:
         processCreateControlCell(packet, addr, connection) # Create request
-        return
+        return True
     elif cmd==2:
         processCreatedControlCell(packet) # Created request
-        return
+        return True
     elif cmd==3:
         processDestroyControlCell(packet) # Destroy request
-        return
+        return True
 
     # Otherwise, we are dealing with a relay cell
     # TODO decrypt the message using the key
-    packet = decryptPacket(addr, packet,connection)
 
     print(packet[5:11].decode())
     if packet[5:11].decode()!="ethhak":
@@ -237,19 +279,8 @@ def processRequest(connection, addr):
     else:
         processRelayCell(addr,packet,connection)
     
-    return 
+    return True
 
-def decrypt_with_rsa(encrypted_payload):
-    decrypted_data = privateKeyRSA.decrypt(
-        encrypted_payload,
-        padding.OAEP(
-            mgf=padding.MGF1(algorithm=hashes.SHA256()),
-            algorithm=hashes.SHA256(),
-            label=None
-        )
-    )
-    return decrypted_data 
-      
 def awaitRequest():
     while True:
         # Start listening
