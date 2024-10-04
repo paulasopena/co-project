@@ -3,6 +3,8 @@ from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import padding as sym_padding
 import os
 
 #TODO: Implement receiving side and decrypt the payload -> understand what we should do (swtich cases)
@@ -10,7 +12,7 @@ import os
 #QUESTION: How does Alice know the address of Carol with relay extended cells?
 
 privateKeyDH = []
-publicKeyDH = 0
+publicKeyDH = b""
 
 privateKeyRSA = 0
 publicKeyRSA = 0
@@ -18,11 +20,14 @@ publicKeyRSA = 0
 circID = b"22"
 g = 29
 p = 4751
+iv = 0
 
 def create_circuit():
     data_exchange = start_dfh_handshake()
     data_padding = insert_padding(data_exchange, 509)
-    return build_packet(circID, b"1", data_padding)
+    packet = build_packet(circID, b"1", data_padding)
+    print("Create Circuit PACKET: ", packet)
+    return packet
 
 def generate_rsa_keys():
     '''privateKeyRSA = rsa.generate_private_key(
@@ -57,7 +62,6 @@ def start_dfh_handshake():
     payload_k = pow(g, privateKeyDH[len(privateKeyDH)-1], p)
     #payload_bytes = payload_k.to_bytes((payload_k.bit_length() + 7) // 8, byteorder='big')
     payload_bytes = str(payload_k).encode()
-    print(payload_bytes)
     privateKeyRSA, publicKeyRSA = generate_rsa_keys()
     encrypted_payload = encrypt_with_rsa(publicKeyRSA, payload_bytes)
     return encrypted_payload
@@ -91,6 +95,7 @@ def build_packet(circID, cmd, data):
 
 def receive_packet(packet):
     #decrypt_with_rsa(packet)
+    print("RECEIVED PACKET: ", packet)
     return process_command(packet)
 
 def process_command(packet):
@@ -113,14 +118,15 @@ def processControllDestroy(payload):
     print("destroy")
 
 def processControllCreated(payload):
-    print("PAYLOAD: ", payload)
+    global publicKeyDH
     string_key = payload.decode('utf-8')
     values = string_key.split(',')
-    prePublicKey = values[1]
+    prePublicKey = values[0].replace("a","")
     publicKeyDHInt = pow(int(prePublicKey), privateKeyDH[len(privateKeyDH)-1], p)
     length = (publicKeyDHInt.bit_length() + 7)//8
     publicKeyDH = publicKeyDHInt.to_bytes(length, byteorder="big")
-    publicKeyDHHashed = payload[476:]
+    print("PUBLICKEY CONTORLL: ", publicKeyDH)
+    publicKeyDHHashed = values[1]
     newPacket = build_relayCell(circID, b"4", b"C", publicKeyDH)
     return newPacket
 
@@ -128,54 +134,75 @@ def processControllCreated(payload):
 ### Relay Cells ###
 
 def processRelayCells(payload):
-    payload_decrypted = decrypt_with_rsa(payload)
-    cmd = payload_decrypted[10:11]
-    data = payload_decrypted[11:]
-    relayLength = payload_decrypted[8:10]
+    payload_decrypted, cmd, relayLength = decrypt_with_aes(payload)
+    print("PAYLOAD EXTENDED DECRYPTED - ", payload_decrypted)
+    print("WHAT IS THIS CMD?", cmd)
+    print("RELAY LENGTH ", relayLength)
+
     if cmd == "0":
         pass
         return
     elif cmd == "4":
-        return processRelayData(data, relayLength)
+        return processRelayData(payload_decrypted, relayLength)
     elif cmd == "B":
-        return processRelayConnected(data, relayLength)
-    elif cmd == "D":
-        return processRelayExtended(data, relayLength)
+        return processRelayConnected(payload_decrypted, relayLength)
+    elif cmd == "d":
+        return processRelayExtended(payload_decrypted, relayLength)
 
 
 def build_relayCell(circID, relay, cmd, publicKey):
     streamID = b"11"
     checkSum = b"ethhak" 
-    OR2 = b"0.0.0.0"
+    OR2 = b"192.016.140.151"
     data = start_dfh_handshake() + OR2
     encrypted = encrypt_with_AES(cmd + data, publicKey)
     data_padding_encrypted = insert_padding(encrypted, 499)
-    print("circID LENGTH: ", len(circID))
-    print("relay LENGTH: ", len(relay))
-    print("streamID LENGTH: ", len(streamID))
-    print("checkSUM LENGTH: ", len(checkSum))
-    print("relayLength LENGTH: ", len(relayLength))
-    print("WITH PADDING LENGTH: ", len(data_padding_encrypted))
     number = len(encrypted)
     relayLength = number.to_bytes(2, byteorder='big')
     packet = circID + relay + streamID + checkSum + relayLength + data_padding_encrypted
-    print("PACKET: ", packet)
+    print("RelayCellCreate PACKET: ", packet)
     return packet
+
+def build_relayBeginCell(circId, relay, cmd, publickey):
+    streamID = b"00"
+    checkSum = b"ethhak" 
+    website = b"111.111.111.111"
+    port = b"80"
+    data = cmd + website + b":" + port
+    encryptedDataOnce = double_encryption_with_AES(encrypt_with_AES(data, publicKeyRSA), publickey)
+    if len(encryptedDataOnce) < 499:
+        padding = b'0' * (499 - len(encryptedDataOnce))
+        payload = encryptedDataOnce + padding
+    else:
+        payload = encryptedDataOnce
+    number = len(payload)
+    relayLength = number.to_bytes(2, byteorder='big')
+    packet = circID + relay + streamID + checkSum + relayLength + payload
+    print("RelayCellBegin PACKET: ", packet)
+    return packet
+
+    
 
 def processRelayConnected(payload):
     print("RelayConnected")
 
 ### WORKING ON IT NOW! ###
 def processRelayExtended(payload, relayLength):
+    print("HEY I AM ABOUT TO PROCESS THE RELAY SHIT")
     finalPayload = removePadding(payload, relayLength)
     string_key = finalPayload.decode('utf-8')
     values = string_key.split(',')
-    prePublicKey = values[0]
+    prePublicKeyOR2 = values[0]
+    publicKeyDHIntOR2 = pow(int(prePublicKeyOR2), privateKeyDH[len(privateKeyDH)-1], p)
+    length = (publicKeyDHIntOR2.bit_length() + 7)//8
+    publicKeyDHOR2 = publicKeyDHIntOR2.to_bytes(length, byteorder="big")
     hashedKey = values[1]
-    print("RelayExtended")
+    newPacketOR2 = build_relayBeginCell(circID, b"4", b"5",publicKeyDHOR2)
+    return newPacketOR2
 
 def removePadding(payload, relayLength):
     finalPayload = payload[-relayLength-1:]
+    print("FINAL PAYLOAD: ", finalPayload)
     return finalPayload
 
 def processRelayEnd(payload):
@@ -189,18 +216,33 @@ def processRelayData(payload):
 
 ### RSA
 
-def decrypt_with_rsa(encrypted_payload):
-    decrypted_data = privateKeyRSA.decrypt(
-        encrypted_payload,
-        padding.OAEP(
-            mgf=padding.MGF1(algorithm=hashes.SHA256()),
-            algorithm=hashes.SHA256(),
-            label=None
-        )
-    )
-    return decrypted_data
+def decrypt_with_aes(encrypted_payload):
+    # get the Size of the data
+    print("PUBLICKEY SecondRSA: ", publicKeyDH)
+    print("PUBLICKEYTYPE SecondRSA: ", type(publicKeyDH))
+    size =int.from_bytes(encrypted_payload[8:10],"big")
+    print("SIZE OF PAYLOAD ENCRYPTED SECOND:", size)
+    # get the encrypted bytes
+    encryptedBytes = encrypted_payload[11:11+size]
+
+    key = checkKey(publicKeyDH, 16)
+    
+    # decypher & remove padding
+    cipher = Cipher(algorithms.AES(key), modes.CBC(iv))
+    decryptor = cipher.decryptor()
+    padded_data = decryptor.update(encryptedBytes) + decryptor.finalize()
+    unpadder = sym_padding.PKCS7(128).unpadder()
+    data = unpadder.update(padded_data) + unpadder.finalize()
+    print("DECRYPTED DATA EXTENDED ", data)
+    print("RELAY DATA INSIDE THE DECRYPT AES ", encrypted_payload)
+    return data, encrypted_payload[10:11].decode(), encrypted_payload[8:10].decode() #WE ARE NOT GETTING THE RELAY DATA PROPERLY HERE! :)
 
 ### AES
+
+def double_encryption_with_AES(payload, key):
+    f = Fernet(key)
+    token = f.encrypt(payload)
+    return token
 
 def checkKey(key, desired_length):
     if len(key) < desired_length:
@@ -210,6 +252,7 @@ def checkKey(key, desired_length):
     return padded_key
 
 def encrypt_with_AES(payload, key):
+    global iv
     key = checkKey(key,16)
     iv = os.urandom(16)
     cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=default_backend())
