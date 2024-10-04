@@ -6,6 +6,8 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import padding as sym_padding
 import os
+import base64
+import hashlib
 
 #TODO: Implement receiving side and decrypt the payload -> understand what we should do (swtich cases)
 #TODO: Get key from receiving packet
@@ -134,20 +136,19 @@ def processControllCreated(payload):
 ### Relay Cells ###
 
 def processRelayCells(payload):
-    payload_decrypted, cmd, relayLength = decrypt_with_aes(payload)
+    payload_decrypted, cmd = decrypt_with_aes(payload)
     print("PAYLOAD EXTENDED DECRYPTED - ", payload_decrypted)
     print("WHAT IS THIS CMD?", cmd)
-    print("RELAY LENGTH ", relayLength)
 
     if cmd == "0":
         pass
         return
     elif cmd == "4":
-        return processRelayData(payload_decrypted, relayLength)
+        return processRelayData(payload_decrypted)
     elif cmd == "B":
-        return processRelayConnected(payload_decrypted, relayLength)
+        return processRelayConnected(payload_decrypted)
     elif cmd == "d":
-        return processRelayExtended(payload_decrypted, relayLength)
+        return processRelayExtended(payload_decrypted)
 
 
 def build_relayCell(circID, relay, cmd, publicKey):
@@ -164,12 +165,13 @@ def build_relayCell(circID, relay, cmd, publicKey):
     return packet
 
 def build_relayBeginCell(circId, relay, cmd, publickey):
+    global publicKeyRSA
     streamID = b"00"
     checkSum = b"ethhak" 
     website = b"111.111.111.111"
     port = b"80"
     data = cmd + website + b":" + port
-    encryptedDataOnce = double_encryption_with_AES(encrypt_with_AES(data, publicKeyRSA), publickey)
+    encryptedDataOnce = double_encryption_with_AES(encrypt_with_AES(data, publicKeyDH), publickey)
     if len(encryptedDataOnce) < 499:
         padding = b'0' * (499 - len(encryptedDataOnce))
         payload = encryptedDataOnce + padding
@@ -187,17 +189,17 @@ def processRelayConnected(payload):
     print("RelayConnected")
 
 ### WORKING ON IT NOW! ###
-def processRelayExtended(payload, relayLength):
+def processRelayExtended(payload):
     print("HEY I AM ABOUT TO PROCESS THE RELAY SHIT")
-    finalPayload = removePadding(payload, relayLength)
-    string_key = finalPayload.decode('utf-8')
+    #finalPayload = removePadding(payload, relayLength)
+    string_key = payload.decode('utf-8')
     values = string_key.split(',')
     prePublicKeyOR2 = values[0]
     publicKeyDHIntOR2 = pow(int(prePublicKeyOR2), privateKeyDH[len(privateKeyDH)-1], p)
     length = (publicKeyDHIntOR2.bit_length() + 7)//8
     publicKeyDHOR2 = publicKeyDHIntOR2.to_bytes(length, byteorder="big")
     hashedKey = values[1]
-    newPacketOR2 = build_relayBeginCell(circID, b"4", b"5",publicKeyDHOR2)
+    newPacketOR2 = build_relayBeginCell(circID, b"4", b"5", publicKeyDHOR2)
     return newPacketOR2
 
 def removePadding(payload, relayLength):
@@ -217,6 +219,7 @@ def processRelayData(payload):
 ### RSA
 
 def decrypt_with_aes(encrypted_payload):
+    global publicKeyDH
     # get the Size of the data
     print("PUBLICKEY SecondRSA: ", publicKeyDH)
     print("PUBLICKEYTYPE SecondRSA: ", type(publicKeyDH))
@@ -234,17 +237,18 @@ def decrypt_with_aes(encrypted_payload):
     unpadder = sym_padding.PKCS7(128).unpadder()
     data = unpadder.update(padded_data) + unpadder.finalize()
     print("DECRYPTED DATA EXTENDED ", data)
-    print("RELAY DATA INSIDE THE DECRYPT AES ", encrypted_payload)
-    return data, encrypted_payload[10:11].decode(), encrypted_payload[8:10].decode() #WE ARE NOT GETTING THE RELAY DATA PROPERLY HERE! :)
+    return data, encrypted_payload[10:11].decode() #WE ARE NOT GETTING THE RELAY DATA PROPERLY HERE! :)
 
 ### AES
 
 def double_encryption_with_AES(payload, key):
+    #Have to turn key into fernet key
     f = Fernet(key)
     token = f.encrypt(payload)
     return token
 
 def checkKey(key, desired_length):
+    print("CHECKKEY: ", key)
     if len(key) < desired_length:
         padded_key = key + b'\x00' * (desired_length - len(key))
     else:
@@ -253,6 +257,7 @@ def checkKey(key, desired_length):
 
 def encrypt_with_AES(payload, key):
     global iv
+    print("ENCRYPTKEY: ", key)
     key = checkKey(key,16)
     iv = os.urandom(16)
     cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=default_backend())
