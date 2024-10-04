@@ -6,8 +6,12 @@ class Circuit:
         self.entries = {circID: {}} # Initialize the 1st circID without an outgoing connection
 
     # Add an outgoing connection to a circID
-    def addOutgoingConnection(self, addr, incomingCircID, outgoingCircID):
+    def addOutgoingConnection(self, addr, incomingCircID, outgoingCircID, enc= False):
         self.entries[incomingCircID]={"addr":addr,"outgoingCircID":outgoingCircID}
+        if enc:
+            self.entries[incomingCircID]["enc"] = 1
+        else:
+            self.entries[incomingCircID]["enc"] = 0
         return True
 
     # Finds the smallest circID available

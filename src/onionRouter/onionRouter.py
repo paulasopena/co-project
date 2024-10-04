@@ -68,8 +68,6 @@ def createKey(packet, ip):
     data = str(g_y)+","+str(hashed)
     return data
 
-    
-
 #TODO
 def decryptPacketExtend(addr, packet,conn):
     # get the Size of the data
@@ -107,6 +105,26 @@ def decryptPacketExtend(addr, packet,conn):
 
 def encryptPacket(packet,addr):
     pass
+
+def decryptPacket(packet,addr):
+    # Get the key
+    length = (keys[addr].bit_length()+7)//8
+    key = keys[addr].to_bytes(length, byteorder="big") + b'\x00'*(16-length)
+
+    # Get the circID (not encrypted)
+    circID = packet[:2].decode()
+    sizeofData = int.from_bytes(response[11:13],'big')
+
+    # Decrypt the rest
+    encryptedBytes = response[14:14+sizeofData]
+    decryptor = cipher.decryptor()
+    padded_data = decryptor.update(encryptedBytes) + decryptor.finalize()
+    unpadder = sym_padding.PKCS7(128).unpadder()
+    decryptedData = unpadder.update(padded_data) + unpadder.finalize()
+
+    # Return the concatenation
+    return circID + decryptedData
+    
 # ================================================
 #                 Networking 
 # ================================================
@@ -242,32 +260,59 @@ def processExtendRelayCell(packet,addr,connection,data,orAddr,iv):
 
 def processRelayCell(addr, packet, connection):
     #cmd = int(packet[13].decode())
-    cmd = 9
-    if cmd==9 or True:
-        data, orAddr, iv = decryptPacketExtend(addr, packet,connection)
-        processExtendRelayCell(packet,addr,connection,data,orAddr, iv)
+    data, orAddr, iv = decryptPacketExtend(addr, packet,connection)
+    processExtendRelayCell(packet,addr,connection,data,orAddr, iv)
+
+def processConnectRelayCell(packet):
+    # Obtain the ip of the server
+    destIP = packet[14:25]
+    destIP = ".".join(str(int(octet)) for octet in destIP.split("."))
+
+    # Start the tcp connection
+    streams[destIP] = socket.socket()
+    streams[destIP].connect((destIP,port_no))
+
+    # Return a created
+    # TODO add to circuit if its to be encrypted or decrypted
+
+def processRelayRequest(packet,addr,connection):
+    cmd = packet[13]
+    if cmd.lower() == "a":
+        processConnectRelayCell()
 
 # --------- General Networking ----
 def connectCircuit(addr,circIDOP,orAddr):
     if orAddr in circuits:
         newCircId = circuits[orAddr].findAvailableCircId()
-        circuits[addr].addOutgoingConnection(orAddr,circIDOP,newCircID)
+        circuits[addr].addOutgoingConnection(orAddr,circIDOP,newCircID,True)
         circuits[orAddr].addOutgoingConnection(addr,newCircID)
     else:
         circuits[orAddr] = circuit.Circuit(0)
-        circuits[addr].addOutgoingConnection(orAddr,circIDOP,0)
-        circuits[orAddr].addOutgoingConnection(addr,0,circIDOP)
+        circuits[addr].addOutgoingConnection(orAddr,circIDOP,0,True)
+        circuits[orAddr].addOutgoingConnection(addr,0,circIDOP,False)
     return
 
 def sendCell(packet, addr):
     host = ".".join(str(int(octet)) for octet in addr.split("."))
     tempSock = socket.socket()
-    print(host)
     tempSock.connect((host,port_no))
     tempSock.send(packet)
     response = tempSock.recv(cell_size)
     tempSock.close()
     return response
+
+def forwardPacket(packet, addr, connection):
+    # Get the corresponding circuit
+    circIDI = packet[:2]
+    circuit = circuits[addr].entries[circID]
+    destIP = circuit[0]
+    circIDO = circuit[1]
+
+    # Replace the circID
+    packet = circIDO.encode()+packet[2:].encode()
+    response = sendCell(packet, destIP)
+    connection.send(response)
+    return 
 
 def processRequest(connection, addr):
     # Receive the cell
@@ -291,16 +336,19 @@ def processRequest(connection, addr):
     elif cmd==3:
         processDestroyControlCell(packet) # Destroy request
         return True
+    elif cmd==4:
+        processRelayCell(addr,packet,connection)
+        return True
+
 
     # Otherwise, we are dealing with a relay cell
     # TODO decrypt the message using the key
 
-    print(packet[5:11].decode())
+    packet = decryptPacket(packet,addr)
     if packet[5:11].decode()!="ethhak":
-        # TODO - Forward packet
-        pass
+        forwardPacket(packet,addr)
     else:
-        processRelayCell(addr,packet,connection)
+        processRelayRequest(packet,addr,connection)
     
     return True
 
