@@ -138,8 +138,11 @@ def decryptPacket(packet,addr):
 
     # Decrypt the rest
     decryptedData = fern.decrypt(packet[2:])
+    print("this is after decryption")
+    print(decryptedData)
     
     # Return the concatenation
+    decryptedData = decryptedData + b'0'*(510-len(decryptedData))
     return circID.encode() + decryptedData
 
     # Get the key
@@ -171,6 +174,7 @@ port_no = 5005
 sock = None
 cell_size = 512
 circuits = {} # dictionary to keep the circuits: {ip: circuits}
+streams = {}
 
 # --------- Control cells ---------
 # Arguments must be int, int & str
@@ -301,21 +305,25 @@ def processRelayCell(addr, packet, connection):
     processExtendRelayCell(packet,addr,connection,data,orAddr, iv)
 
 def processConnectRelayCell(packet):
+    print("ALMOST THERE")
     # Obtain the ip of the server
-    destIP = packet[14:25]
+    destIP = packet[14:29].decode()
     destIP = ".".join(str(int(octet)) for octet in destIP.split("."))
+    conn_port = packet[30:33].decode()
+    print(destIP)
+    print(conn_port)
 
     # Start the tcp connection
-    streams[destIP] = socket.socket()
-    streams[destIP].connect((destIP,port_no))
+    streams[destIP] = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    streams[destIP].connect((destIP,int(conn_port)))
 
     # Return a created
     # TODO add to circuit if its to be encrypted or decrypted
 
 def processRelayRequest(packet,addr,connection):
-    cmd = packet[13]
-    if cmd.lower() == "a":
-        processConnectRelayCell()
+    cmd = packet[13:14].decode()
+    if cmd == "5":
+        processConnectRelayCell(packet)
 
 # --------- General Networking ----
 def connectCircuit(addr,circIDOP,orAddr):
@@ -344,6 +352,8 @@ def forwardPacket(packet, addr, connection):
     circuit = circuits[addr].entries[circID]
     destIP  = circuit['addr']
     circIDO = str(circuit['outgoingCircID'])
+    if len(circIDO)<2:
+        circIDO = '0'+circIDO
 
     # Replace the circID
     packet   = circIDO.encode()+packet[2:]
@@ -390,16 +400,17 @@ def processRequest(connection, addr):
 
     decryptedPacket = decryptPacket(packet,addr)
 
-    if packet[5:11].decode()!="ethhak":
+    print(decryptedPacket[5:11].decode()=="ethhak")
+    if decryptedPacket[5:11].decode()!="ethhak":
         circID = int(decryptedPacket[:2].decode())
         print(circuits[addr].entries)
         if "enc" not in circuits[addr].entries[circID] or circuits[addr].entries[circID]["enc"]==1:
             print("I AM HERE!!!!\n\n\n\n")
-            forwardPacket(packet,addr,connection)
+            forwardPacket(decryptedData,addr,connection)
         else:
             forwardPacket(packet)
     else:
-        processRelayRequest(packet,addr,connection)
+        processRelayRequest(decryptedPacket,addr,connection)
     
     return True
 
