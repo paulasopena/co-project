@@ -9,9 +9,9 @@ import os
 import base64
 import hashlib
 
-#TODO: Implement receiving side and decrypt the payload -> understand what we should do (swtich cases)
-#TODO: Get key from receiving packet
-#QUESTION: How does Alice know the address of Carol with relay extended cells?
+#########################
+##  GLOBAL VARIABLES  ##
+#########################
 
 privateKeyDH = []
 publicKeyDH = b""
@@ -23,6 +23,8 @@ circID = b"22"
 g = 29
 p = 4751
 iv = 0
+
+
 
 def create_circuit():
     data_exchange = start_dfh_handshake()
@@ -154,7 +156,7 @@ def processRelayCells(payload):
 def build_relayCell(circID, relay, cmd, publicKey):
     streamID = b"11"
     checkSum = b"ethhak" 
-    OR2 = b"192.016.140.151"
+    OR2 = b"193.010.039.215"
     data = start_dfh_handshake() + OR2
     encrypted = encrypt_with_AES(cmd + data, publicKey)
     data_padding_encrypted = insert_padding(encrypted, 499)
@@ -170,25 +172,31 @@ def build_relayBeginCell(circId, relay, cmd, publickey):
     checkSum = b"ethhak" 
     website = b"111.111.111.111"
     port = b"80"
-    data = cmd + website + b":" + port
-    encryptedDataOnce = double_encryption_with_AES(encrypt_with_AES(data, publicKeyDH), publickey)
-    if len(encryptedDataOnce) < 499:
-        padding = b'0' * (499 - len(encryptedDataOnce))
+    payload_noEncryption = cmd + website + b":" + port
+    number = len(payload_noEncryption)
+    relayLength = number.to_bytes(2, byteorder='big')
+    data = relay + streamID + checkSum + relayLength + payload_noEncryption
+    print("FIRST KEY: ",publickey)
+    print("SECOND KEY: ", publicKeyDH)
+    firstPackage = double_encryption_with_AES(data, publickey)
+    print("FIRST PACKAGE: ", firstPackage)
+    encryptedDataOnce = double_encryption_with_AES(firstPackage, publicKeyDH)
+    if len(encryptedDataOnce) < 510:
+        padding = b'0' * (510 - len(encryptedDataOnce))
         payload = encryptedDataOnce + padding
     else:
         payload = encryptedDataOnce
-    number = len(payload)
-    relayLength = number.to_bytes(2, byteorder='big')
-    packet = circID + relay + streamID + checkSum + relayLength + payload
+    
+    packet = circID + payload
     print("RelayCellBegin PACKET: ", packet)
     return packet
 
     
-
+### WORKING ON IT NOW! ###
 def processRelayConnected(payload):
     print("RelayConnected")
 
-### WORKING ON IT NOW! ###
+
 def processRelayExtended(payload):
     print("HEY I AM ABOUT TO PROCESS THE RELAY SHIT")
     #finalPayload = removePadding(payload, relayLength)
@@ -237,13 +245,23 @@ def decrypt_with_aes(encrypted_payload):
     unpadder = sym_padding.PKCS7(128).unpadder()
     data = unpadder.update(padded_data) + unpadder.finalize()
     print("DECRYPTED DATA EXTENDED ", data)
-    return data, encrypted_payload[10:11].decode() #WE ARE NOT GETTING THE RELAY DATA PROPERLY HERE! :)
+    return data, encrypted_payload[10:11].decode()
 
 ### AES
 
+def getFernetKey(raw_key):
+    padded_key = raw_key.ljust(32,b'0')
+    key = base64.urlsafe_b64encode(padded_key)
+    with open ("pass.key", "wb") as key_file:
+        key_file.write(key)
+
+def call_key():
+    return open("pass.key", "rb").read()
+
 def double_encryption_with_AES(payload, key):
-    #Have to turn key into fernet key
-    f = Fernet(key)
+    getFernetKey(key)
+    finalFernetKey = call_key()
+    f = Fernet(finalFernetKey)
     token = f.encrypt(payload)
     return token
 
