@@ -340,13 +340,13 @@ def sendCell(packet, addr):
 
 def forwardPacket(packet, addr, connection):
     # Get the corresponding circuit
-    circIDI = packet[:2]
+    circID = int(packet[:2].decode())
     circuit = circuits[addr].entries[circID]
-    destIP  = circuit[0]
-    circIDO = circuit[1]
+    destIP  = circuit['addr']
+    circIDO = str(circuit['outgoingCircID'])
 
     # Replace the circID
-    packet   = circIDO.encode()+packet[2:].encode()
+    packet   = circIDO.encode()+packet[2:]
     response = sendCell(packet, destIP)
     connection.send(response)
     return 
@@ -395,7 +395,7 @@ def processRequest(connection, addr):
         print(circuits[addr].entries)
         if "enc" not in circuits[addr].entries[circID] or circuits[addr].entries[circID]["enc"]==1:
             print("I AM HERE!!!!\n\n\n\n")
-            forwardPacket(packet,addr)
+            forwardPacket(packet,addr,connection)
         else:
             forwardPacket(packet)
     else:
