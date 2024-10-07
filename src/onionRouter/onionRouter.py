@@ -113,7 +113,8 @@ def encryptPacket(packet,addr):
         key_file.write(key)
 
     key = call_key()
-    encryptedMessage = a.encrypt(packet)
+    f = Fernet(key)
+    encryptedMessage = f.encrypt(packet)
     return encryptedMessage
 
 def call_key():
@@ -304,14 +305,11 @@ def processRelayCell(addr, packet, connection):
     data, orAddr, iv = decryptPacketExtend(addr, packet,connection)
     processExtendRelayCell(packet,addr,connection,data,orAddr, iv)
 
-def processConnectRelayCell(packet):
-    print("ALMOST THERE")
+def processConnectRelayCell(packet,addr,connection):
     # Obtain the ip of the server
     destIP = packet[14:29].decode()
     destIP = ".".join(str(int(octet)) for octet in destIP.split("."))
     conn_port = packet[30:33].decode()
-    print(destIP)
-    print(conn_port)
 
     # Start the tcp connection
     streams[destIP] = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -319,11 +317,20 @@ def processConnectRelayCell(packet):
 
     # Return a created
     # TODO add to circuit if its to be encrypted or decrypted
+    circID = packet[:2]
+    enc = b'4'+b'00'+b'ethhak'+b'00'+b'b'
+    enc = encryptPacket(enc, addr)
+    enc = enc + (510-len(enc))*b'0'
+    new_packet = circID+enc
+
+    connection.send(new_packet)
+
+
 
 def processRelayRequest(packet,addr,connection):
     cmd = packet[13:14].decode()
     if cmd == "5":
-        processConnectRelayCell(packet)
+        processConnectRelayCell(packet,addr,connection)
 
 # --------- General Networking ----
 def connectCircuit(addr,circIDOP,orAddr):
@@ -406,13 +413,14 @@ def processRequest(connection, addr):
         print(circuits[addr].entries)
         if "enc" not in circuits[addr].entries[circID] or circuits[addr].entries[circID]["enc"]==1:
             print("I AM HERE!!!!\n\n\n\n")
-            forwardPacket(decryptedData,addr,connection)
+            forwardPacket(decryptedPacket,addr,connection)
+            packet = connetion.recv(cell_size)
         else:
             forwardPacket(packet)
     else:
         processRelayRequest(decryptedPacket,addr,connection)
     
-    return True
+    return False 
 
 def awaitRequest():
     while True:
