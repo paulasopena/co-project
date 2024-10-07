@@ -15,6 +15,7 @@ import hashlib
 
 privateKeyDH = []
 publicKeyDH = b""
+publicKeyDHOR2 = b""
 
 privateKeyRSA = 0
 publicKeyRSA = 0
@@ -23,7 +24,7 @@ circID = b"22"
 g = 29
 p = 4751
 iv = 0
-
+connected = False
 
 
 def create_circuit():
@@ -138,41 +139,28 @@ def processControllCreated(payload):
 ### Relay Cells ###
 
 def processRelayCells(payload):
-    payload_decrypted, cmd = decrypt_with_aes(payload)
-    print("PAYLOAD EXTENDED DECRYPTED - ", payload_decrypted)
-    print("WHAT IS THIS CMD?", cmd)
-
-    if cmd == "0":
-        pass
-        return
-    elif cmd == "4":
-        return processRelayData(payload_decrypted)
-    elif cmd == "B":
-        return processRelayConnected(payload_decrypted)
-    elif cmd == "d":
-        return processRelayExtended(payload_decrypted)
-
-
-def build_relayCell(circID, relay, cmd, publicKey):
-    streamID = b"11"
-    checkSum = b"ethhak" 
-    OR2 = b"193.010.039.215"
-    data = start_dfh_handshake() + OR2
-    encrypted = encrypt_with_AES(cmd + data, publicKey)
-    data_padding_encrypted = insert_padding(encrypted, 499)
-    number = len(encrypted)
-    relayLength = number.to_bytes(2, byteorder='big')
-    packet = circID + relay + streamID + checkSum + relayLength + data_padding_encrypted
-    print("RelayCellCreate PACKET: ", packet)
-    return packet
-
-def build_relayBeginCell(circId, relay, cmd, publickey):
+    if connected == False:
+        payload_decrypted, cmd = decrypt_with_aes(payload)
+        print("PAYLOAD EXTENDED DECRYPTED - ", payload_decrypted)
+        print("WHAT IS THIS CMD?", cmd)
+        if cmd == "0":
+            pass
+            return
+        elif cmd == "4":
+            return processRelayData(payload_decrypted)
+        elif cmd == "B":
+            return processRelayConnected(payload_decrypted)
+        elif cmd == "d":
+            return processRelayExtended(payload_decrypted)
+    else:
+        return sendMessage(b'4', b'4', publicKeyDHOR2)
+    
+def sendMessage(relay, cmd, publickey):
     global publicKeyRSA
+    global connected
     streamID = b"00"
     checkSum = b"ethhak" 
-    website = b"111.111.111.111"
-    port = b"80"
-    payload_noEncryption = cmd + website + b":" + port
+    payload_noEncryption = cmd + b"HelloWorld"
     number = len(payload_noEncryption)
     relayLength = number.to_bytes(2, byteorder='big')
     data = relay + streamID + checkSum + relayLength + payload_noEncryption
@@ -191,6 +179,47 @@ def build_relayBeginCell(circId, relay, cmd, publickey):
     print("RelayCellBegin PACKET: ", packet)
     return packet
 
+
+def build_relayCell(circID, relay, cmd, publicKey):
+    streamID = b"11"
+    checkSum = b"ethhak" 
+    OR2 = b"193.010.039.215"
+    data = start_dfh_handshake() + OR2
+    encrypted = encrypt_with_AES(cmd + data, publicKey)
+    data_padding_encrypted = insert_padding(encrypted, 499)
+    number = len(encrypted)
+    relayLength = number.to_bytes(2, byteorder='big')
+    packet = circID + relay + streamID + checkSum + relayLength + data_padding_encrypted
+    print("RelayCellCreate PACKET: ", packet)
+    return packet
+
+def build_relayBeginCell(circId, relay, cmd, publickey):
+    global publicKeyRSA
+    global connected
+    streamID = b"00"
+    checkSum = b"ethhak" 
+    website = b"130.229.146.122"
+    port = b"900"
+    payload_noEncryption = cmd + website + b":" + port
+    number = len(payload_noEncryption)
+    relayLength = number.to_bytes(2, byteorder='big')
+    data = relay + streamID + checkSum + relayLength + payload_noEncryption
+    print("FIRST KEY: ",publickey)
+    print("SECOND KEY: ", publicKeyDH)
+    firstPackage = double_encryption_with_AES(data, publickey)
+    print("FIRST PACKAGE: ", firstPackage)
+    encryptedDataOnce = double_encryption_with_AES(firstPackage, publicKeyDH)
+    if len(encryptedDataOnce) < 510:
+        padding = b'0' * (510 - len(encryptedDataOnce))
+        payload = encryptedDataOnce + padding
+    else:
+        payload = encryptedDataOnce
+    
+    packet = circID + payload
+    print("RelayCellBegin PACKET: ", packet)
+    connected = True    #Maybe fix later
+    return packet
+
     
 ### WORKING ON IT NOW! ###
 def processRelayConnected(payload):
@@ -198,6 +227,7 @@ def processRelayConnected(payload):
 
 
 def processRelayExtended(payload):
+    global publicKeyDHOR2
     print("HEY I AM ABOUT TO PROCESS THE RELAY SHIT")
     #finalPayload = removePadding(payload, relayLength)
     string_key = payload.decode('utf-8')
