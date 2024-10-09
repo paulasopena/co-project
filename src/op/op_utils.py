@@ -139,6 +139,8 @@ def processControllCreated(payload):
 ### Relay Cells ###
 
 def processRelayCells(payload):
+    global publicKeyDH
+    global publicKeyDHOR2
     if connected == False:
         payload_decrypted, cmd = decrypt_with_aes(payload)
         print("PAYLOAD EXTENDED DECRYPTED - ", payload_decrypted)
@@ -153,37 +155,18 @@ def processRelayCells(payload):
         elif cmd == "d":
             return processRelayExtended(payload_decrypted)
     else:
-        return sendMessage(b'4', b'4', publicKeyDHOR2)
-    
-def sendMessage(relay, cmd, publickey):
-    global publicKeyRSA
-    global connected
-    streamID = b"00"
-    checkSum = b"ethhak" 
-    payload_noEncryption = cmd + b"HelloWorld"
-    number = len(payload_noEncryption)
-    relayLength = number.to_bytes(2, byteorder='big')
-    data = relay + streamID + checkSum + relayLength + payload_noEncryption
-    print("FIRST KEY: ",publickey)
-    print("SECOND KEY: ", publicKeyDH)
-    firstPackage = double_encryption_with_AES(data, publickey)
-    print("FIRST PACKAGE: ", firstPackage)
-    encryptedDataOnce = double_encryption_with_AES(firstPackage, publicKeyDH)
-    if len(encryptedDataOnce) < 510:
-        padding = b'0' * (510 - len(encryptedDataOnce))
-        payload = encryptedDataOnce + padding
-    else:
-        payload = encryptedDataOnce
-    
-    packet = circID + payload
-    print("RelayCellBegin PACKET: ", packet)
-    return packet
+        print("PUBLICKEYDH", publicKeyDH)
+        print("PUBLICKEYDHOR2", publicKeyDHOR2)
+        payload_decrypted_first = decrypt_double_aes(payload, publicKeyDH)
+        payload_decrypted = decrypt_double_aes(payload_decrypted_first, publicKeyDHOR2)
+        print("PAYLOAD DECRYPTED: ", payload_decrypted)
+        print("Connection successfull")
 
 
 def build_relayCell(circID, relay, cmd, publicKey):
     streamID = b"11"
     checkSum = b"ethhak" 
-    OR2 = b"193.010.039.215"
+    OR2 = b"193.010.037.195"
     data = start_dfh_handshake() + OR2
     encrypted = encrypt_with_AES(cmd + data, publicKey)
     data_padding_encrypted = insert_padding(encrypted, 499)
@@ -198,7 +181,7 @@ def build_relayBeginCell(circId, relay, cmd, publickey):
     global connected
     streamID = b"00"
     checkSum = b"ethhak" 
-    website = b"130.229.146.122"
+    website = b"130.229.179.249"
     port = b"900"
     payload_noEncryption = cmd + website + b":" + port
     number = len(payload_noEncryption)
@@ -217,7 +200,7 @@ def build_relayBeginCell(circId, relay, cmd, publickey):
     
     packet = circID + payload
     print("RelayCellBegin PACKET: ", packet)
-    connected = True    #Maybe fix later
+    connected = True
     return packet
 
     
@@ -255,6 +238,29 @@ def processRelayData(payload):
     print("RelayData")
 
 ### RSA
+
+def decrypt_double_aes(encrypted_payload, key_used):
+    #length = (key_used.bit_length()+7)//8
+    #raw_key = key_used.to_bytes(length, byteorder="big")
+    #print(raw_key)
+
+    getFernetKey(key_used)
+    key_final = call_key()
+    fern = Fernet(key_final)
+
+    # Get the circID (not encrypted)
+    # circID = encrypted_payload[:2].decode()
+
+    # Decrypt the rest
+    print("PAYLOAD FOR FERNET ", encrypted_payload)
+    print("FERNET KEY :", key_final)
+    decryptedData = fern.decrypt(encrypted_payload)
+    print("this is after decryption")
+    print(decryptedData)
+
+    # Return the concatenation
+    decryptedData = decryptedData + b'0'*(498-len(decryptedData))
+    return decryptedData
 
 def decrypt_with_aes(encrypted_payload):
     global publicKeyDH
