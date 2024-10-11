@@ -47,7 +47,6 @@ def dh_handshake(received_public_key, ip):
 
     return capital_B
 
-# TODO
 def createKey(packet, ip):
     # Remove padding
     packet = packet[-256:]
@@ -69,7 +68,6 @@ def createKey(packet, ip):
     data = str(g_y)+","+str(hashed)
     return data
 
-#TODO
 def decryptPacketExtend(addr, packet,conn):
     # get the Size of the data
     size =int.from_bytes(packet[11:13],"big")
@@ -145,24 +143,6 @@ def decryptPacket(packet,addr):
     # Return the concatenation
     decryptedData = decryptedData + b'0'*(510-len(decryptedData))
     return circID.encode() + decryptedData
-
-    # Get the key
-    length = (keys[addr].bit_length()+7)//8
-    key = keys[addr].to_bytes(length, byteorder="big") + b'\x00'*(16-length)
-
-    # Get the circID (not encrypted)
-    circID = packet[:2].decode()
-    sizeofData = int.from_bytes(response[11:13],'big')
-
-    # Decrypt the rest
-    encryptedBytes = response[14:14+sizeofData]
-    decryptor = cipher.decryptor()
-    padded_data = decryptor.update(encryptedBytes) + decryptor.finalize()
-    unpadder = sym_padding.PKCS7(128).unpadder()
-    decryptedData = unpadder.update(padded_data) + unpadder.finalize()
-
-    # Return the concatenation
-    return circID + decryptedData
     
 def simpleDecrypt(packet, addr):
     pass
@@ -316,7 +296,6 @@ def processConnectRelayCell(packet,addr,connection):
     streams[destIP].connect((destIP,int(conn_port)))
 
     # Return a created
-    # TODO add to circuit if its to be encrypted or decrypted
     circID = packet[:2]
     enc = b'4'+b'00'+b'ethhak'+b'00'+b'b'
     enc = encryptPacket(enc, addr)
@@ -450,7 +429,6 @@ def processRequest(connection, addr):
 
 
     # Otherwise, we are dealing with a relay cell
-    # TODO decrypt the message using the key
 
     decryptedPacket = decryptPacket(packet,addr)
 
@@ -487,7 +465,6 @@ def awaitRequest():
         connection, addr = sock.accept()
         print("-> Connection received!")
 
-        # TODO - possibly fork the process to add parallelism
         # Start TCP connection
         while True:
             if not processRequest(connection, addr[0]):
