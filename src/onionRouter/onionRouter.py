@@ -350,11 +350,14 @@ def sendCell(packet, addr):
     tempSock.connect((host,port_no))
     tempSock.send(packet)
     response = tempSock.recv(cell_size)
+    print("\n\n\n\nAFTER SENDING THE RELAY REQUEST")
+    print(response)
     tempSock.close()
     return response
 
 def forwardPacket(packet, addr, connection):
     # Get the corresponding circuit
+    strCircId = packet[:2].decode()
     circID = int(packet[:2].decode())
     circuit = circuits[addr].entries[circID]
     destIP  = circuit['addr']
@@ -365,13 +368,57 @@ def forwardPacket(packet, addr, connection):
     # Replace the circID
     packet   = circIDO.encode()+packet[2:]
     response = sendCell(packet, destIP)
-    connection.send(response)
+
+    end_pos = response.find(b'==') + 2
+    print(response[2:end_pos])
+    encryptedData = encryptPacket(response[2:end_pos],addr)
+    encryptedData = encryptedData + (510-len(encryptedData))*b'0'
+
+
+    # Replace the circID
+    packet   = strCircId.encode()+encryptedData
+    connection.send(packet)
+
+    print("SENT THE REPSONSE TO RELAY")
+    print(encryptedData)
+    print(len(encryptedData))
+
+    #length = (keys[addr].bit_length()+7)//8
+    #raw_key = keys[addr].to_bytes(length, byteorder="big")
+    raw_key = str(keys[addr]).encode()
+    print("RAW KEY")
+    print(raw_key)
+
+    padded_key = raw_key.ljust(32, b'0')
+    key = base64.urlsafe_b64encode(padded_key)
+    print("PADDED KEY")
+    print(padded_key)
+    print(key)
+
+
+    with open("pass.key", "wb") as key_file:
+        key_file.write(key)
+
+    key = call_key()
+    print("KEY")
+    print(key)
+    fern = Fernet(key)
+
+    # Decrypt the rest
+    decryptedData = fern.decrypt(encryptedData)
+    print("this is after decryption")
+    print(decryptedData)
+    
+    # Return the concatenation
+    #decryptedData = decryptedData + b'0'*(510-len(decryptedData))
+    #print(decryptPacket(packet,addr))
     return 
 
 def processRequest(connection, addr):
     # Receive the cell
     packet = connection.recv(cell_size)
 
+    input()
     #print("PACKET:")
     #print(packet)
     #print("\n\n\n")
@@ -414,7 +461,15 @@ def processRequest(connection, addr):
         if "enc" not in circuits[addr].entries[circID] or circuits[addr].entries[circID]["enc"]==1:
             print("I AM HERE!!!!\n\n\n\n")
             forwardPacket(decryptedPacket,addr,connection)
-            packet = connetion.recv(cell_size)
+            """
+            packet = connection.recv(cell_size)
+            packet = encryptPacket(packet[2:],addr)
+            circID = int(packet[:2].decode())
+            circuit = circuits[addr].entries[circID]
+            destIP  = circuit['addr']
+            circIDO = str(circuit['outgoingCircID'])
+            forwardPacket(str(circID).encode()+packet,addr,connection)
+            """
         else:
             forwardPacket(packet)
     else:
