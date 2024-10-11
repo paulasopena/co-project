@@ -2,7 +2,7 @@ import socket
 import struct
 import op_utils
 
-TCP_IP = '193.10.39.179' 
+TCP_IP = '130.237.5.34' 
 TCP_PORT = 5005          # Same port as the server
 BUFFER_SIZE = 1024
 PACKET = op_utils.create_circuit()
@@ -19,7 +19,7 @@ PACKET = op_utils.receive_packet(data)
 s.send(PACKET)
 data = s.recv(BUFFER_SIZE)
 PACKET = op_utils.receive_packet(data)
-s.send(PACKET)
+#s.send(PACKET)
 s.close()
 
 print("Received data:", data)

@@ -114,7 +114,7 @@ def process_command(packet):
     elif cmd == "3":
         return processControllDestroy(payload)
     elif cmd >= "4":
-        return processRelayCells(payload)
+        return processRelayCells(packet)
 
 
 ### Controll Cells ###
@@ -138,11 +138,11 @@ def processControllCreated(payload):
 
 ### Relay Cells ###
 
-def processRelayCells(payload):
+def processRelayCells(packet):
     global publicKeyDH
     global publicKeyDHOR2
     if connected == False:
-        payload_decrypted, cmd = decrypt_with_aes(payload)
+        payload_decrypted, cmd = decrypt_with_aes(packet[3:])
         print("PAYLOAD EXTENDED DECRYPTED - ", payload_decrypted)
         print("WHAT IS THIS CMD?", cmd)
         if cmd == "0":
@@ -157,7 +157,7 @@ def processRelayCells(payload):
     else:
         print("PUBLICKEYDH", publicKeyDH)
         print("PUBLICKEYDHOR2", publicKeyDHOR2)
-        payload_decrypted_first = decrypt_double_aes(payload, publicKeyDH)
+        payload_decrypted_first = decrypt_double_aes(packet[2:], publicKeyDH)
         payload_decrypted = decrypt_double_aes(payload_decrypted_first, publicKeyDHOR2)
         print("PAYLOAD DECRYPTED: ", payload_decrypted)
         print("Connection successfull")
@@ -166,7 +166,7 @@ def processRelayCells(payload):
 def build_relayCell(circID, relay, cmd, publicKey):
     streamID = b"11"
     checkSum = b"ethhak" 
-    OR2 = b"193.010.037.195"
+    OR2 = b"192.016.140.252"
     data = start_dfh_handshake() + OR2
     encrypted = encrypt_with_AES(cmd + data, publicKey)
     data_padding_encrypted = insert_padding(encrypted, 499)
@@ -181,7 +181,7 @@ def build_relayBeginCell(circId, relay, cmd, publickey):
     global connected
     streamID = b"00"
     checkSum = b"ethhak" 
-    website = b"130.229.179.249"
+    website = b"130.229.178.068"
     port = b"900"
     payload_noEncryption = cmd + website + b":" + port
     number = len(payload_noEncryption)
@@ -243,8 +243,17 @@ def decrypt_double_aes(encrypted_payload, key_used):
     #length = (key_used.bit_length()+7)//8
     #raw_key = key_used.to_bytes(length, byteorder="big")
     #print(raw_key)
+    keyA = str(int.from_bytes(key_used, byteorder="big")).encode()
+    key_used = keyA
+    print("KEY USED RAW: ", key_used)
+    padded_key = key_used + b'0' * (32 - len(key_used))
+    #padded_key = key_used.ljust(32,b'0')
+    print("PADDED KEY: ", padded_key)
+    key = base64.urlsafe_b64encode(padded_key)
+    print("Base64 KEY: ", key)
+    with open ("pass.key", "wb") as key_file:
+        key_file.write(key)
 
-    getFernetKey(key_used)
     key_final = call_key()
     fern = Fernet(key_final)
 
@@ -253,7 +262,7 @@ def decrypt_double_aes(encrypted_payload, key_used):
 
     # Decrypt the rest
     print("PAYLOAD FOR FERNET ", encrypted_payload)
-    print("FERNET KEY :", key_final)
+    print("FERNET KEY :", key)
     decryptedData = fern.decrypt(encrypted_payload)
     print("this is after decryption")
     print(decryptedData)
@@ -288,6 +297,7 @@ def decrypt_with_aes(encrypted_payload):
 def getFernetKey(raw_key):
     padded_key = raw_key.ljust(32,b'0')
     key = base64.urlsafe_b64encode(padded_key)
+    print("PADDED KEY: ", key)
     with open ("pass.key", "wb") as key_file:
         key_file.write(key)
 
