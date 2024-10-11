@@ -398,9 +398,6 @@ def processRequest(connection, addr):
     packet = connection.recv(cell_size)
 
     input()
-    #print("PACKET:")
-    #print(packet)
-    #print("\n\n\n")
 
     # In case the TCP connnection was closed or something went wrong with the packet
     if not packet: #or len(packet)!=512:
