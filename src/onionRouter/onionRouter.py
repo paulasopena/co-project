@@ -10,7 +10,8 @@ from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import padding as sym_padding
 import math
-
+import base64
+from cryptography.fernet import Fernet
 
 # ================================================
 #                     General 
@@ -104,9 +105,47 @@ def decryptPacketExtend(addr, packet,conn):
     return data[1:len(data)-15], data[-15:].decode(), iv
 
 def encryptPacket(packet,addr):
-    pass
+    raw_key = str(keys[addr]).encode()
+    padded_key = raw_key.ljust(32, b'0')
+    key = base64.urlsafe_b64encode(padded_key)
+
+    with open("pass.key", "wb") as key_file:
+        key_file.write(key)
+
+    key = call_key()
+    f = Fernet(key)
+    encryptedMessage = f.encrypt(packet)
+    return encryptedMessage
+
+def call_key():
+    return open("pass.key", "rb").read()
 
 def decryptPacket(packet,addr):
+    length = (keys[addr].bit_length()+7)//8
+    raw_key = keys[addr].to_bytes(length, byteorder="big")
+    print(raw_key)
+
+    padded_key = raw_key.ljust(32, b'0')
+    key = base64.urlsafe_b64encode(padded_key)
+
+    with open("pass.key", "wb") as key_file:
+        key_file.write(key)
+
+    key = call_key()
+    fern = Fernet(key)
+
+    # Get the circID (not encrypted)
+    circID = packet[:2].decode()
+
+    # Decrypt the rest
+    decryptedData = fern.decrypt(packet[2:])
+    print("this is after decryption")
+    print(decryptedData)
+    
+    # Return the concatenation
+    decryptedData = decryptedData + b'0'*(510-len(decryptedData))
+    return circID.encode() + decryptedData
+
     # Get the key
     length = (keys[addr].bit_length()+7)//8
     key = keys[addr].to_bytes(length, byteorder="big") + b'\x00'*(16-length)
@@ -125,6 +164,9 @@ def decryptPacket(packet,addr):
     # Return the concatenation
     return circID + decryptedData
     
+def simpleDecrypt(packet, addr):
+    pass
+    
 # ================================================
 #                 Networking 
 # ================================================
@@ -133,7 +175,7 @@ port_no = 5005
 sock = None
 cell_size = 512
 circuits = {} # dictionary to keep the circuits: {ip: circuits}
-
+streams = {}
 
 # --------- Control cells ---------
 # Arguments must be int, int & str
@@ -211,7 +253,7 @@ def processExtendRelayCell(packet,addr,connection,data,orAddr,iv):
     # This will build a create command cell and send it to the next OR
 
     # Get the info
-    print("I AM ABOUT TO SEND THE RELAY CELL")
+    #print("I AM ABOUT TO SEND THE RELAY CELL")
     circIDOP = int(packet[:2].decode())
 
     # Add the outgoing to the circuit
@@ -219,7 +261,7 @@ def processExtendRelayCell(packet,addr,connection,data,orAddr,iv):
     
     # Create the packet
     newPacket = buildControlCell('00','1',data)
-    print(newPacket)
+    #print(newPacket)
 
     # Send the packet
     controlResponse = sendCell(newPacket, orAddr)
@@ -236,21 +278,21 @@ def processExtendRelayCell(packet,addr,connection,data,orAddr,iv):
 
     response = str(circIDOP).encode()
     length = len(ct)
-    encoded = b"4"+b"00"+b"ethhak"+length.to_bytes(2,'big')+b"a"+ct
+    encoded = b"4"+b"00"+b"ethhak"+length.to_bytes(2,'big')+b"d"+ct
 
     response += encoded
     response += b"0"*(512-len(response))
 
     # HOW TO DECRYPT IT ==================
     sizeofData = int.from_bytes(response[11:13],'big')
-    print("SIZE OF DATA: ",sizeofData)
+    #print("SIZE OF DATA: ",sizeofData)
 
     encryptedBytes = response[14:14+sizeofData]
     decryptor = cipher.decryptor()
     padded_data = decryptor.update(encryptedBytes) + decryptor.finalize()
     unpadder = sym_padding.PKCS7(128).unpadder()
     decryptedData = unpadder.update(padded_data) + unpadder.finalize()
-    print("DATA DECRYPTED: ",decryptedData)
+    #print("DATA DECRYPTED: ",decryptedData)
     # ====================================
     
     # Encrypt & Forward the response
@@ -263,22 +305,32 @@ def processRelayCell(addr, packet, connection):
     data, orAddr, iv = decryptPacketExtend(addr, packet,connection)
     processExtendRelayCell(packet,addr,connection,data,orAddr, iv)
 
-def processConnectRelayCell(packet):
+def processConnectRelayCell(packet,addr,connection):
     # Obtain the ip of the server
-    destIP = packet[14:25]
+    destIP = packet[14:29].decode()
     destIP = ".".join(str(int(octet)) for octet in destIP.split("."))
+    conn_port = packet[30:33].decode()
 
     # Start the tcp connection
-    streams[destIP] = socket.socket()
-    streams[destIP].connect((destIP,port_no))
+    streams[destIP] = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    streams[destIP].connect((destIP,int(conn_port)))
 
     # Return a created
     # TODO add to circuit if its to be encrypted or decrypted
+    circID = packet[:2]
+    enc = b'4'+b'00'+b'ethhak'+b'00'+b'b'
+    enc = encryptPacket(enc, addr)
+    enc = enc + (510-len(enc))*b'0'
+    new_packet = circID+enc
+
+    connection.send(new_packet)
+
+
 
 def processRelayRequest(packet,addr,connection):
-    cmd = packet[13]
-    if cmd.lower() == "a":
-        processConnectRelayCell()
+    cmd = packet[13:14].decode()
+    if cmd == "5":
+        processConnectRelayCell(packet,addr,connection)
 
 # --------- General Networking ----
 def connectCircuit(addr,circIDOP,orAddr):
@@ -303,13 +355,15 @@ def sendCell(packet, addr):
 
 def forwardPacket(packet, addr, connection):
     # Get the corresponding circuit
-    circIDI = packet[:2]
+    circID = int(packet[:2].decode())
     circuit = circuits[addr].entries[circID]
-    destIP = circuit[0]
-    circIDO = circuit[1]
+    destIP  = circuit['addr']
+    circIDO = str(circuit['outgoingCircID'])
+    if len(circIDO)<2:
+        circIDO = '0'+circIDO
 
     # Replace the circID
-    packet = circIDO.encode()+packet[2:].encode()
+    packet   = circIDO.encode()+packet[2:]
     response = sendCell(packet, destIP)
     connection.send(response)
     return 
@@ -318,11 +372,18 @@ def processRequest(connection, addr):
     # Receive the cell
     packet = connection.recv(cell_size)
 
+    #print("PACKET:")
+    #print(packet)
+    #print("\n\n\n")
+
     # In case the TCP connnection was closed or something went wrong with the packet
     if not packet: #or len(packet)!=512:
         return False
 
-    cmd = int(packet[2:3].decode())
+    try:
+        cmd = int(packet[2:3].decode())
+    except:
+        cmd = 5
     # Check the command byte (control cells have unencrypted headers)
     if cmd==0:
         pass # Padding - not implemented
@@ -344,13 +405,22 @@ def processRequest(connection, addr):
     # Otherwise, we are dealing with a relay cell
     # TODO decrypt the message using the key
 
-    packet = decryptPacket(packet,addr)
-    if packet[5:11].decode()!="ethhak":
-        forwardPacket(packet,addr)
+    decryptedPacket = decryptPacket(packet,addr)
+
+    print(decryptedPacket[5:11].decode()=="ethhak")
+    if decryptedPacket[5:11].decode()!="ethhak":
+        circID = int(decryptedPacket[:2].decode())
+        print(circuits[addr].entries)
+        if "enc" not in circuits[addr].entries[circID] or circuits[addr].entries[circID]["enc"]==1:
+            print("I AM HERE!!!!\n\n\n\n")
+            forwardPacket(decryptedPacket,addr,connection)
+            packet = connetion.recv(cell_size)
+        else:
+            forwardPacket(packet)
     else:
-        processRelayRequest(packet,addr,connection)
+        processRelayRequest(decryptedPacket,addr,connection)
     
-    return True
+    return False 
 
 def awaitRequest():
     while True:
