@@ -37,6 +37,32 @@ This allows us to get a fully decrypted version of the actual packet, which we c
 By adding the encrypted version of the circuit ID just before this newly padded packet, we have the full version of the decrypted data.
 
 For the call_key() function, we are using "rb" as an argument, which stands for "read binary". This is to ensure that we are retrieving the key from the .key file in its precise format, without any alterations or modifications.
+
+In regards to the networking, the Onion Router (OR), follows a very simple routine. First of all, it listens to any incoming TCP requests. We opted for this 
+protocol as it was stated in the official documentation and we wanted a lossless communication. Once a connection is received, the OR will process and
+respond to any messages incoming, until the connection is closed. To make the system more parallel, we could have forked the process, however this was
+not done to keep the project simple. 
+
+Once a message is received, the system will verify whats the command of the cell. There are two main cases:
+1. Create Control Cell
+    This command is sent to create circuit with this OR. So, the mechanism is quite simple: we establish a key via Diffie-Hellman, create a circuit
+    with this IP and the given circuit ID, create the response for the host who contacted us to also establish the Diffie-Hellman key and send the
+    request back.
+2. Extend Relay Cell
+    This command is sent to extend the circuit to another IP, i.e. add another OR to our circuit. Here, the OR simply has to change the circuit ID and
+    change it to the circuit ID it will share with the new host. Afterwards, creates a create control cell and sends the new packet (with the
+    unencrypted data so the new IP can establish a key with the Onion Proxy) to the IP. Once the response arrives, it is encrypted and sent back.
+    Simultaneously, the circuit is updated.
+
+If the command is not one of these, then the whole message must be encrypted. So the first step is to decrypt it. Afterwards, the OR will check if,
+in a specific byte range, a readable message is present. If it isn't, then the request is not to be executed by this OR. Consequently, the decrypted
+packet will be forwarded.
+
+If, however, the secret is present, then the request is to be executed by the current browser. For simplicity, the only type of request in this case
+is a connect relay command. This simply establishes a TCP connection with the host provided by the Onion Proxy. Once it is done, it simply sends a 
+response confirming that the TCP connection was established. On the other end, there will be, in our case, one OR waiting,
+but in TOR, as many as wanted. This OR, when receiving a response from a request it simply forwarded, it will just
+encrypt the packet and send it back to the original sender.
 </details>
 
 ## Technical setup and Documentation for Testing
@@ -44,6 +70,32 @@ For the call_key() function, we are using "rb" as an argument, which stands for 
 
 This section includes a user manual for anyone who clones the repository, detailing how to run the implementation and check the outcomes. Wireshark captures could be included if time allows.
 
+### Onion Router
+It is important to mention that this will need to be done in two computers, as there are two routers. For each of them,
+make sure to write down the IP of the machine you are working with.
+
+To setup the Onion Router, simply switch to the Onion Router folder. Once there, make sure the shell file, `run.sh`
+has is set as executable. 
+
+If not, set it:
+
+```
+chmod +x run.sh
+```
+
+This file will simply run a Docker file and create a container which will run our program. Some Python libraries
+might need to be installed manually.
+
+Once that is done, run the file as sudo, since Docker will need to bind ports. Furthermore, make sure port 5005
+is not being used by any other process, for this is the port for our TOR implementation.
+
+```
+sudo ./run.sh
+```
+
+Once it is running, the program will ask you whenever you need to press a key to continue the TOR process.
+When the TCP connection with the server requested by the Onion Proxy has been done, you will need to manually
+kill the process wiht `CTRL+C`. Afterwards, just rerun the shell file whenever you want to do the simulation.
 </details>
 
 ## References
