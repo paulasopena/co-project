@@ -385,7 +385,6 @@ def processRequest(connection, addr):
     print("-> Decrypting packet...")
     decryptedPacket = decryptPacket(packet,addr)
 
-    print(decryptedPacket[5:11].decode()=="ethhak")
     if decryptedPacket[5:11].decode()!="ethhak":
         circID = int(decryptedPacket[:2].decode())
         if "enc" not in circuits[addr].entries[circID] or circuits[addr].entries[circID]["enc"]==1:
