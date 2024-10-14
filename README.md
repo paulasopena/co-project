@@ -35,6 +35,8 @@ Now, the first 2 bytes in the packet represent the circuit ID. Therefore we sepa
 Afterwards, we again create a Fernet object, but this time we use it as an argument to the decrypt() functionality of fernet. As the parameter, we put the rest of the packet, from the third byte onwards.
 This allows us to get a fully decrypted version of the actual packet, which we can then pad up to 512 bytes with random characters (we used zeros), in order to comply with the TOR specifications.
 By adding the encrypted version of the circuit ID just before this newly padded packet, we have the full version of the decrypted data.
+
+For the call_key() function, we are using "rb" as an argument, which stands for "read binary". This is to ensure that we are retrieving the key from the .key file in its precise format, without any alterations or modifications.
 </details>
 
 ## Technical setup and Documentation for Testing
