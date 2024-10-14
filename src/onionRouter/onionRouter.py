@@ -37,11 +37,7 @@ def dh_handshake(received_public_key, ip):
     small_b = random.randint(1, 100)
     capital_B = pow(g, small_b, p)
 
-    #print("capital_A", received_public_key)
-    #print("capital_B: ",capital_B)
-    #print("SMALL_B ",small_b)
     key = pow(received_public_key,small_b,p)#pow(g, power, p)
-    #print("KEY: ",key)
 
     keys[ip] = key
 
@@ -121,7 +117,6 @@ def call_key():
 def decryptPacket(packet,addr):
     length = (keys[addr].bit_length()+7)//8
     raw_key = keys[addr].to_bytes(length, byteorder="big")
-    print(raw_key)
 
     padded_key = raw_key.ljust(32, b'0')
     key = base64.urlsafe_b64encode(padded_key)
@@ -137,8 +132,6 @@ def decryptPacket(packet,addr):
 
     # Decrypt the rest
     decryptedData = fern.decrypt(packet[2:])
-    print("this is after decryption")
-    print(decryptedData)
     
     # Return the concatenation
     decryptedData = decryptedData + b'0'*(510-len(decryptedData))
@@ -206,14 +199,15 @@ def processCreateControlCell(packet, addr, connection):
     else:
         circuits[addr] = circuit.Circuit(circID)
 
-    print(circuits)
     print("\tCircuit handled...")
-    print(circuits[addr].entries)
 
     data = "a"*(509-len(data))+data
     response = bytearray(packet[:2]) + b"2" + data.encode() 
 
+    print("Enter any key to continue.")
+    input()
     connection.send(response)
+
     print("\tResponse sent.","\n-> Request fulfilled")
     print("===============================\n\n")
     print("===============================")
@@ -230,6 +224,7 @@ def createRelayCell(circID,streamID,checksum,length,cmd,data):
     return response
 
 def processExtendRelayCell(packet,addr,connection,data,orAddr,iv):
+    print("-> Extend Relay Cell received") 
     # This will build a create command cell and send it to the next OR
 
     # Get the info
@@ -238,13 +233,17 @@ def processExtendRelayCell(packet,addr,connection,data,orAddr,iv):
 
     # Add the outgoing to the circuit
     connectCircuit(addr,circIDOP,orAddr)
+
+    print("\tCircuit extended")
     
     # Create the packet
     newPacket = buildControlCell('00','1',data)
     #print(newPacket)
 
     # Send the packet
+    print("\tSending connection request to router...")
     controlResponse = sendCell(newPacket, orAddr)
+    print("\tReceived response from router...")
     data = controlResponse[3:].decode()
 
     length = (keys[addr].bit_length()+7)//8
@@ -263,18 +262,8 @@ def processExtendRelayCell(packet,addr,connection,data,orAddr,iv):
     response += encoded
     response += b"0"*(512-len(response))
 
-    # HOW TO DECRYPT IT ==================
-    sizeofData = int.from_bytes(response[11:13],'big')
-    #print("SIZE OF DATA: ",sizeofData)
-
-    encryptedBytes = response[14:14+sizeofData]
-    decryptor = cipher.decryptor()
-    padded_data = decryptor.update(encryptedBytes) + decryptor.finalize()
-    unpadder = sym_padding.PKCS7(128).unpadder()
-    decryptedData = unpadder.update(padded_data) + unpadder.finalize()
-    #print("DATA DECRYPTED: ",decryptedData)
-    # ====================================
-    
+    print("Press any key to continue.")
+    input()
     # Encrypt & Forward the response
     connection.send(response)
 
@@ -329,12 +318,11 @@ def sendCell(packet, addr):
     tempSock.connect((host,port_no))
     tempSock.send(packet)
     response = tempSock.recv(cell_size)
-    print("\n\n\n\nAFTER SENDING THE RELAY REQUEST")
-    print(response)
     tempSock.close()
     return response
 
 def forwardPacket(packet, addr, connection):
+    print("-> Received forward packet command")
     # Get the corresponding circuit
     strCircId = packet[:2].decode()
     circID = int(packet[:2].decode())
@@ -344,60 +332,28 @@ def forwardPacket(packet, addr, connection):
     if len(circIDO)<2:
         circIDO = '0'+circIDO
 
+    print("\tObtained corresponding circuit...")
     # Replace the circID
     packet   = circIDO.encode()+packet[2:]
     response = sendCell(packet, destIP)
 
     end_pos = response.find(b'==') + 2
-    print(response[2:end_pos])
+    print("\tEncrypting response...")
     encryptedData = encryptPacket(response[2:end_pos],addr)
     encryptedData = encryptedData + (510-len(encryptedData))*b'0'
 
 
     # Replace the circID
     packet   = strCircId.encode()+encryptedData
+    print("\tPress any key to continue")
+    input()
     connection.send(packet)
 
-    print("SENT THE REPSONSE TO RELAY")
-    print(encryptedData)
-    print(len(encryptedData))
-
-    #length = (keys[addr].bit_length()+7)//8
-    #raw_key = keys[addr].to_bytes(length, byteorder="big")
-    raw_key = str(keys[addr]).encode()
-    print("RAW KEY")
-    print(raw_key)
-
-    padded_key = raw_key.ljust(32, b'0')
-    key = base64.urlsafe_b64encode(padded_key)
-    print("PADDED KEY")
-    print(padded_key)
-    print(key)
-
-
-    with open("pass.key", "wb") as key_file:
-        key_file.write(key)
-
-    key = call_key()
-    print("KEY")
-    print(key)
-    fern = Fernet(key)
-
-    # Decrypt the rest
-    decryptedData = fern.decrypt(encryptedData)
-    print("this is after decryption")
-    print(decryptedData)
-    
-    # Return the concatenation
-    #decryptedData = decryptedData + b'0'*(510-len(decryptedData))
-    #print(decryptPacket(packet,addr))
     return 
 
 def processRequest(connection, addr):
     # Receive the cell
     packet = connection.recv(cell_size)
-
-    input()
 
     # In case the TCP connnection was closed or something went wrong with the packet
     if not packet: #or len(packet)!=512:
@@ -424,27 +380,16 @@ def processRequest(connection, addr):
         processRelayCell(addr,packet,connection)
         return True
 
-
     # Otherwise, we are dealing with a relay cell
 
+    print("-> Decrypting packet...")
     decryptedPacket = decryptPacket(packet,addr)
 
     print(decryptedPacket[5:11].decode()=="ethhak")
     if decryptedPacket[5:11].decode()!="ethhak":
         circID = int(decryptedPacket[:2].decode())
-        print(circuits[addr].entries)
         if "enc" not in circuits[addr].entries[circID] or circuits[addr].entries[circID]["enc"]==1:
-            print("I AM HERE!!!!\n\n\n\n")
             forwardPacket(decryptedPacket,addr,connection)
-            """
-            packet = connection.recv(cell_size)
-            packet = encryptPacket(packet[2:],addr)
-            circID = int(packet[:2].decode())
-            circuit = circuits[addr].entries[circID]
-            destIP  = circuit['addr']
-            circIDO = str(circuit['outgoingCircID'])
-            forwardPacket(str(circID).encode()+packet,addr,connection)
-            """
         else:
             forwardPacket(packet)
     else:
@@ -482,7 +427,6 @@ if __name__ == "__main__":
     # Clear out the terminal
     os.system('cls' if os.name == 'nt' else 'clear')
     print("=== ONION ROUTER INITIATING ===")
-    print(privateKey)
     # Create the socket
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.bind(('0.0.0.0',port_no))
