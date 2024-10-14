@@ -15,8 +15,8 @@ import base64
 circID = b"22"
 streamID = b"00"
 checkSum = b"ethhak" 
-OR2 = b"192.016.140.252"
-website = b"130.229.178.068"
+OR2 = b""
+website = b""
 port = b"900"
 
 # ============================================================
@@ -45,7 +45,10 @@ connected = False
 # Create and Receive Functions
 # ============================================================
 
-def createCircuit():
+def createCircuit(OR2Input, websiteInput):
+    global OR2, website
+    OR2 = OR2Input.encode('utf-8')
+    website = websiteInput.encode('utf-8')
     dataExchange = startDfhHandshake()
     dataPadding = insertPadding(dataExchange, 509)
     packet = buildPacket(b"1", dataPadding)
@@ -235,7 +238,7 @@ def checkKey(key, desiredLength):
 def padPayloadAES(payload):
     blockSize = 16
     paddingLength = blockSize - (len(payload) % blockSize)
-    padding = bytes([paddingLength] * paddingLength)  # PKCS7 padding
+    padding = bytes([paddingLength] * paddingLength)  #PKCS7 padding
     return payload + padding
 
 def insertPadding(dataExchange, length):

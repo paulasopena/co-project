@@ -1,10 +1,12 @@
 import socket
 import op_utils
 
-OR1 = '130.237.5.34' 
+OR1 = input("Enter the IP of the first Onion Router: ")
+OR2 = input("Enter the IP of the second Onion Router: ")
+website = input("Enter the IP of the website: ")
 PORT = 5005
 BUFFER = 1024
-PACKET = op_utils.createCircuit()
+PACKET = op_utils.createCircuit(OR2, website)
 print("============================================================")
 print("                         ONION PROXY                        ")
 print("============================================================")
