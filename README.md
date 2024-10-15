@@ -63,6 +63,89 @@ is a connect relay command. This simply establishes a TCP connection with the ho
 response confirming that the TCP connection was established. On the other end, there will be, in our case, one OR waiting,
 but in TOR, as many as wanted. This OR, when receiving a response from a request it simply forwarded, it will just
 encrypt the packet and send it back to the original sender.
+
+### Folder Structure and Roles for the Proxy
+The project is organized into two main files, `op.py` and `op_utils.py`, each handling different aspects of the onion routing system:
+
+1. **`op.py`:**
+    This file is responsible for managing the client-side connection to the onion router. It includes the initial connection establishment, sending and receiving packets, processing the data exchanged during the handshake, and communicating with the onion router. The main logic for circuit creation and communication flow is initiated here, making it the entry point for the onion routing process.
+    
+2. **`op_utils.py`:**
+    This file contains utility functions that support cryptographic operations, packet creation, and data processing. It provides the cryptographic backbone, such as RSA encryption, Diffie-Hellman key exchange, and AES encryption. It also manages the construction of relay and control cells used in the communication process.
+
+### `op.py`
+- **`OR1`, `TCP_PORT`:** Define the first router IP and port used for connection.
+- **`OR2` ,`website` : Define the second and website IP**
+- **`BUFFER`:** Sets the maximum size of data to be received in one go.
+- **`PACKET`:** Created using the `createCircuit()` function from `op_utils.py`, which initiates the Diffie-Hellman handshake and prepares the packet for transmission.
+- **Main Workflow:**
+    - Establishes a connection to the onion router.
+    - Sends a packet to initiate the handshake and receives the response.
+    - Continues the packet exchange process to finalize the circuit creation using encrypted communication.
+    - Closes the connection after completing the exchange.
+1. **`s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)`**:
+    - This initializes a socket object that creates a TCP connection. It uses the Internet address family (`AF_INET`) and the stream-based connection protocol (`SOCK_STREAM`).
+2. **`s.connect((OR1, TCP_PORT))`**:
+    - Establishes a connection to the onion router, identified by the IP address and port. This connection is essential for initiating communication between the client and the onion router.
+3. **`s.send(PACKET)` and `s.recv(BUFFER)`**:
+    - Sends the packet created in `op_utils.py` to the server and receives the response from the server. This is done multiple times to simulate a back-and-forth communication during the circuit-building phase.
+
+### `op_utils.py`
+### Global Variables:
+- Stores cryptographic keys (RSA, Diffie-Hellman) and various identifiers used across the circuit-building process.
+
+### Create and Receive Functions
+1. **`createCircuit(OR2Input, websiteInput)`**:
+    - This function begins the process of setting up an onion routing circuit by initiating a Diffie-Hellman handshake using `startDfhHandshake()`, adds padding to the data, and constructs the first packet to be sent to the server using `buildPacket()`. The result is a well-formed packet that can be transmitted to the onion router.
+2. **`receivePacket(packet)`**:
+    - This function handles incoming packets. Based on the content of the received packet, it calls the appropriate processing function and routes the packet for further operations, such as processing control or relay cells.
+3. **`processRelayCells(packet)`**:
+    - Handles incoming relay cells. It decrypts the payload using AES and determines what type of relay cell it is (e.g., data, extended, or connected). Depending on the type, it calls further functions (`processRelayData()`, `processRelayConnected()`).
+4. **`processControllCreated(payload)`**:
+    - This function handles the "created" control cell, which signifies that the circuit was successfully created. It processes the public key sent by the onion router during the handshake and prepares the relay cell for extending the circuit.
+5. **`processRelayExtended(payload)`**:
+    - This function handles an "extended" relay cell, which means the circuit has been extended to an additional relay node. The function extracts the public key of the next relay node from the payload and performs another Diffie-Hellman key exchange to communicate securely with this new node.
+6. **`buildRelayCell(relay, cmd)` :**
+    - This function builds the relay cell that will be sent to extend the circuit.
+    - The encrypted data is padded using `insertPadding()`, and the cell is built with the `circID`, relay command, and payload.
+    - The relay cell is then sent to the onion router.
+7. **`buildRelayBeginCell(relay, cmd)`** 
+    - When starting a relay connection, this function builds the first relay cell, combining the `circID`, relay command (`relay`), command (`cmd`), and target address. The payload is encrypted twice using AES.
+    - The relay cell is sent to the next onion router to establish a connection to the destination.
+
+### **Encryption Functions**
+1. **`generateRSAKeys()`**:
+    - Instead of generating new RSA keys, this function loads a public RSA key from a file. The key is later used to encrypt data exchanged during the handshake.
+2. **`encryptionRSA(publicKey, payloadBytes)`**:
+    - This function takes a public RSA key and encrypts a byte array (`payload_bytes`) using the RSA algorithm with OAEP padding (Optimal Asymmetric Encryption Padding). This encryption ensures that the key exchange process remains confidential.
+3. **`startDfhHandshake()`**:
+    - This function begins the Diffie-Hellman (DH) handshake, a method used to exchange cryptographic keys over a public channel securely. It generates a DH key (a large number `payload_k` based on a predefined `g` and `p`), encrypts this key using RSA encryption (`encryptionRSA()`), and returns the encrypted payload for the first part of the handshake.
+4. **`encryptionAES(payload)`**:
+    - Encrypts a payload using the AES algorithm (Advanced Encryption Standard). AES encryption is symmetric, meaning the same key is used for encryption and decryption. The function pads the data and uses a cypher block chaining (CBC) mode with a random initialization vector (IV) to add additional security to the encryption.
+5. **`doubleEncryptionAES(payload, key)`**:
+    - This function applies double encryption to the payload using the AES algorithm. The `getFernetKey()` function derives the Fernet key from the provided raw key. The payload is then encrypted twice: first with the provided key and then again using the derived Fernet key. This layered encryption is vital in onion routing to ensure that multiple encryption layers can be peeled off by each node in the network, with only the final recipient being able to decrypt the message fully.
+6. **`decryptionAES(encryptedPayload)`**:
+    - This function decrypts an AES-encrypted payload using the AES algorithm in CBC (Cipher Block Chaining) mode. It uses the shared Diffie-Hellman secret (`publicKeyDH`) as the decryption key.
+    - This function is essential for decrypting data exchanged between nodes in the onion routing circuit, as it ensures each relay node can decrypt its respective layer of encryption.
+7. **`doubleDecryptionAES(encryptedPayload, keyUsed)`**:
+    - This function decrypts data twice with AES encryption. It's used in onion routing because each relay node in the circuit applies its own encryption layer to the packet, and this function helps peel off one layer at a time. After decryption, the decrypted data is returned.
+8. **`getFernetKey(rawKey)`**:
+    - This function converts the raw key used for encryption into a valid Fernet key. It first pads the raw key to the required 32-byte length and then encodes it using base64. The padded and encoded key is then saved into a file (`pass.key`), which can later be used for encryption and decryption.
+9. **`callKey()`**:
+    - This function reads the Fernet key from the file (`pass.key`) created by `getFernetKey()`. It returns the key in a format suitable for Fernet encryption and decryption, ensuring that the same key can be reused during multiple encryption and decryption cycles.
+
+### **Helper Functions**
+1. **`buildPacket(cmd, data)`**:
+    - Combines the circuit ID (`circID`), a command byte (`cmd`), and the actual data (`data`) to form a complete packet that adheres to the onion routing protocol. This packet is then sent over the network.
+2. **`checkKey(key, desiredLength)`**:
+    - Ensures that the provided key is the correct length by padding or truncating it to the desired size. This function is helpful for RSA and AES keys, where strict key size requirements must be met.
+3. **`padPayloadAES(payload)`**:
+    - Implements PKCS7 padding, a standard padding scheme used for AES encryption. This ensures that the payload's length is a multiple of the AES block size (16 bytes), which is required for successful encryption.
+4. **`insertPadding(dataExchange, length)`**:
+    - Pads the data exchange to ensure the packet size matches the expected length. This function adds zeros if the data is shorter than the required length, ensuring uniform packet sizes and reducing the risk of timing attacks.
+   
+### **Flow chart for proxy**
+![image.png](https://prod-files-secure.s3.us-west-2.amazonaws.com/928a94ef-e465-4625-b49d-99e839b9350e/a7d32f01-7ee6-4cd3-af6f-a799ac4917c7/image.png)
 </details>
 
 ## Technical setup and Documentation for Testing
