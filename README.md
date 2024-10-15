@@ -174,11 +174,11 @@ The project is organized into two main files, `op.py` and `op_utils.py`, each ha
     - Pads the data exchange to ensure the packet size matches the expected length. This function adds zeros if the data is shorter than the required length, ensuring uniform packet sizes and reducing the risk of timing attacks.
    
 ### **Flow chart for proxy**
-![image.png](https://prod-files-secure.s3.us-west-2.amazonaws.com/928a94ef-e465-4625-b49d-99e839b9350e/a7d32f01-7ee6-4cd3-af6f-a799ac4917c7/image.png)
-</details>
+<div align="center">
+    <img src="https://github.com/user-attachments/assets/8fd62916-376b-431b-a742-32763f595b47" alt="Control and Relay Cells" width="800"/>
+  </div>
 
 ## Technical setup and Documentation for Testing
-
 
 This section includes a user manual for anyone who clones the repository, detailing how to run the implementation and check the outcomes. Wireshark captures could be included if time allows.
 
