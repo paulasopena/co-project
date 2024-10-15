@@ -1,32 +1,61 @@
-# Onion Routing TOR Implementation
+# Onion Routing TOR Implementation 
 
 ## Problem Statement
-Introduction to TOR and onion routing and why is it interesting to implement.
+This project is an implementation of onion routing, using the TOR protocol as a reference. Onion routing is used to anonymize TCP-based applications, where clients (referred to as **onion proxies** in this documentation) select a path through the network and establish a circuit. 
 
-## Documentation of Implementation
+The security of onion routing relies on the principle that each node knows only the preceding and succeeding node but is unaware of the entire circuit. Traffic flows within fixed-size cells, transmitted in the data portion of TCP packets. These cells are encrypted, and each node can decrypt its portion using a symmetric key, thereby peeling back the "layers of the onion" to access the data.
 
-This section describes the implementation details of our TOR system and the reasoning behind design choices.
+The implementation of onion routing requires a solid understanding of various encryption protocols, including Diffie-Hellman for key exchange, RSA for exchanging the agreed-upon Diffie-Hellman keys between nodes, and AES for the symmetric encryption of data transmitted across the network.
 
+## Documentation of the Implementation
+### Network Architecture
+  
+  The implementation of the onion routing has used three main roles in the network:
+  - **Onion Proxy (OP)**: Initiates the creation of the circuit and creates the message for connecting with the website.
+  - **Onion Router (OR)**: Responsible for extending the circuit and processing requests from the onion proxy.
+  - **Website**: For testing, this is a simple server that performs a TCP handshake with one of the onion routers.
 
-
-<details>
-  <summary><h3>Network Architecture</h3></summary>
-
-This section contains a visual network architecture diagram showing the roles in the system.
-
-</details>
+  <div align="center">
+    <img src="https://github.com/user-attachments/assets/6922dc7a-feb3-48a9-931c-2f491f1a43dc" alt="Network Architecture" width="400"/>
+  </div>
 
 <details>
   <summary><h3>TOR Protocol</h3></summary>
 
-Here we show the flow diagram of our custom message implementation, illustrating the messages exchanged between nodes.
+This section outlines the messages exchanged between nodes and provides a brief overview of the content of each packet.
+
+<div align="center">
+  <img src="https://github.com/user-attachments/assets/a3fe26d4-735b-41c7-8397-62dc97810c8e" alt="TOR Protocol Diagram" width="500"/>
+</div>
+
+The TOR protocol is based on **two main types of cells**, each classified into different types depending on its function. This classification is determined by the `CMD` byte in the header of each cell. Listed down below are the ones that have been exchanged in this implementation. 
+
+- **Control Cells**: These cells manage the circuit creation and handle Diffie-Hellman key exchange between routers.
+  - **Create** (`CMD = 1`): Sent from the OP (Onion Proxy) to the OR (Onion Router) to request a circuit extension.
+  - **Created** (`CMD = 2`): Sent from the OR to the OP to indicate that the circuit has been successfully created.
+
+  <div align="center">
+    <img src="https://github.com/user-attachments/assets/31453cf7-ab61-4ca1-a7bf-4cb1a74b59f3" alt="Control and Relay Cells" width="400"/>
+  </div>
+
+- **Relay Cells** (`CMD = 4`): These have an additional header compared to control cells and are used to pass data along the established circuit.
+  - **Extend** (`cmd = C`): Sent from the OP to the OR to request further extension of the circuit.
+  - **Extended** (`cmd = D`): Sent from the OR to the OP to confirm that the circuit has been extended.
+  - **Begin** (`cmd = 5`): Sent from the OP to the OR to request the start of the data stream.
+  - **Connected** (`cmd = B`): The OR notifies the OP that the stream has been successfully started.
+
+  <div align="center">
+    <img src="https://github.com/user-attachments/assets/e328926a-f806-467c-b189-769f15bff245" alt="Control and Relay Cells" width="600"/>
+  </div>
 
 </details>
+
+
 
 <details>
   <summary><h3>Software Architecture and Implementation</h3></summary>
 
-Explanation of the folder structure and the roles of each file. This section outlines which files handle the various functions of the designed roles.
+Explanation of the folder structure and the roles of each file. This subsection outlines which files handle the various functions of the designed roles.
 
 Within the onionRouter.py file in the feat/onionRouter branch, we start the implementation by defining a method for the key exchange protocol. In order to employ the same concepts from the learning trajectory of the course, we decided to perform the key exchange via the Difie-Hellman protocol. The very first think we did was settle on a set of values for the large prime p and the generator g, to be used in the protocol. The values are p = 4751, g = 29. For convenience, let us take 2 arbitrary routers from our network and refer to them as Alice and Bob, as showcased in the lectures. The exchange scheme works as follows: Alice takes her private key a, computes g^a modulo p, and sends the corresponding result to Bob. Similarly, Bob takes his private key b, computes g^b modulo p, and sends the corresponding result to Bob.  Then, Alice raises the value she received from Bob to the value of a (her secret key) modulo p, and Bob raises the value he received from Alice to the value of b (his secret key) modulo p. In so doing, Alice and Bob have now established a shared secret key which is equal to g^(ab) mod p.
 
@@ -183,7 +212,6 @@ kill the process wiht `CTRL+C`. Afterwards, just rerun the shell file whenever y
 
 ## References
 
-All relevant references used during the implementation.
 
 
 
